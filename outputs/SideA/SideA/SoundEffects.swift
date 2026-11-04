@@ -1,43 +1,54 @@
 import AVFoundation
 import MediaToolbox
 import Synchronization
-import SwiftUI
 
 enum SoundPreset: String, CaseIterable, Identifiable, Sendable {
-    case original, vocal, bass, soft, commute, night
+    case original, surround, hall, vocal, studio, bass, soft
     var id: String { rawValue }
+    static func restored(_ value: String?) -> Self {
+        switch value {
+        case "commute": return .vocal
+        case "night": return .soft
+        default: return Self(rawValue: value ?? "") ?? .original
+        }
+    }
     var title: String {
         switch self {
         case .original: return "原声"
-        case .vocal: return "人声"
-        case .bass: return "低音"
-        case .soft: return "舒缓"
-        case .commute: return "通勤"
-        case .night: return "夜间"
+        case .surround: return "立体环绕"
+        case .hall: return "音乐厅"
+        case .vocal: return "清澈人声"
+        case .studio: return "录音棚"
+        case .bass: return "低音增强"
+        case .soft: return "柔和聆听"
         }
     }
     var detail: String {
         switch self {
         case .original: return "保留录音本来的声音"
-        case .vocal: return "突出人声与细节"
-        case .bass: return "增强低频的厚度"
+        case .surround: return "立体声扩展与侧向早反射"
+        case .hall: return "柔和、宽阔的厅堂混响"
+        case .vocal: return "减轻浑浊，突出歌声细节"
+        case .studio: return "短房间反射，紧凑自然"
+        case .bass: return "低频更饱满，保留人声"
         case .soft: return "柔和高频，轻松聆听"
-        case .commute: return "突出中频，让旋律更清晰"
-        case .night: return "收敛低频与高频，柔和聆听"
         }
     }
-    // Shared scene targets with Android. Engines have different band responses.
     var gains: [Double] {
         switch self {
-        case .original: return [0,0,0,0,0]
+        case .original, .surround, .studio: return [0,0,0,0,0]
+        case .hall: return [0,-0.5,0,0,-1]
         case .vocal: return [-2,-1,2,3,0]
         case .bass: return [4,2,0,-1,-1]
         case .soft: return [1,0,0,-1,-3]
-        case .commute: return [-2,0,2,2,0]
-        case .night: return [-4,-2,0,-1,-4]
         }
     }
-    var preamp: Double { self == .original ? 1 : pow(10, -((gains.max() ?? 0) + 2) / 20) }
+    var preamp: Double {
+        if self == .original { return 1 }
+        let headroom = self == .surround || self == .hall ? 4.0 : self == .studio ? 3.0 : 2.0
+        return pow(10, -((gains.max() ?? 0) + headroom) / 20)
+    }
+    var spatial: Bool { self == .surround || self == .hall || self == .studio }
 }
 
 private struct SoundBiquad {
@@ -59,66 +70,161 @@ private struct SoundBiquad {
     }
 }
 
-// A tap owns one processor. Its buffers are allocated before the audio callback.
-// prepare/process/unprepare are serialized by MediaToolbox; the UI only reads atomics.
+// All delay storage is created in prepare, never in the realtime process callback.
+private final class SoundDelay {
+    let memory: UnsafeMutablePointer<Double>
+    let length: Int
+    var position = 0, damped = 0.0
+    init(seconds: Double, rate: Double) {
+        length = max(1, Int((seconds * rate).rounded()))
+        memory = .allocate(capacity: length); memory.initialize(repeating: 0, count: length)
+    }
+    deinit { memory.deinitialize(count: length); memory.deallocate() }
+    func clear() { memory.update(repeating: 0, count: length); position = 0; damped = 0 }
+    func delay(_ input: Double) -> Double {
+        let value = memory[position]; memory[position] = input
+        position += 1; if position == length { position = 0 }
+        return value
+    }
+    func comb(_ input: Double, feedback: Double, damping: Double) -> Double {
+        let value = memory[position]
+        damped = value * (1 - damping) + damped * damping
+        memory[position] = input * (1 - feedback) + damped * feedback
+        position += 1; if position == length { position = 0 }
+        return value
+    }
+    func allpass(_ input: Double) -> Double {
+        let delayed = memory[position], value = delayed - input * 0.5
+        memory[position] = input + value * 0.5
+        position += 1; if position == length { position = 0 }
+        return value
+    }
+}
+
+// Original, modest-wet room model: four damped combs and two allpass diffusers.
+// Stable feedback and normalized comb input avoid a buildup on sustained notes.
+private final class SoundRoom {
+    private let combs: [SoundDelay], diffusers: [SoundDelay]
+    private let feedback: Double, damping: Double
+    init(rate: Double, hall: Bool, right: Bool) {
+        let times = hall ? [0.0297,0.0371,0.0411,0.0437] : [0.0091,0.0137,0.0173,0.0211]
+        combs = times.map { SoundDelay(seconds: $0 + (right ? 0.0011 : 0), rate: rate) }
+        diffusers = [SoundDelay(seconds: hall ? 0.0053 : 0.0027, rate: rate),
+                     SoundDelay(seconds: hall ? 0.0017 : 0.0011, rate: rate)]
+        feedback = hall ? 0.78 : 0.38
+        // A fixed low-pass corner, independent of the asset sample rate.
+        damping = exp(-2 * Double.pi * (hall ? 5_500 : 7_000) / rate)
+    }
+    func clear() { for line in combs { line.clear() }; for line in diffusers { line.clear() } }
+    func sample(_ input: Double) -> Double {
+        var value = 0.0
+        for i in 0..<4 { value += combs[i].comb(input, feedback: feedback, damping: damping) * 0.25 }
+        for i in 0..<2 { value = diffusers[i].allpass(value) }
+        return value
+    }
+}
+
+// prepare/process/unprepare are serialized by MediaToolbox; the UI reads atomics only.
+// Pointer-backed filter/scratch arrays avoid Swift Array COW inside the callback.
 final class SoundDSP {
-    private let gains: [Double]
+    private let preset: SoundPreset, gains: [Double]
     private let frequencies = [63.0, 250, 1_000, 4_000, 16_000]
     private let gain: Double
-    private var bands = [SoundBiquad](repeating: SoundBiquad(), count: 40)
-    private var channels = 0
+    private let bands = UnsafeMutablePointer<SoundBiquad>.allocate(capacity: 40)
+    private let pointers = UnsafeMutablePointer<UnsafeMutablePointer<Float>?>.allocate(capacity: 8)
+    private let strides = UnsafeMutablePointer<Int>.allocate(capacity: 8)
+    private let values = UnsafeMutablePointer<Double>.allocate(capacity: 8)
+    private let dry = UnsafeMutablePointer<Double>.allocate(capacity: 8)
+    private var sideDelay: SoundDelay?, leftRoom: SoundRoom?, rightRoom: SoundRoom?
+    private var channels = 0, rampFrames = 480, rampPosition = 0
     private var supported = false
     let framesProcessed = Atomic<Int>(0)
-    let formatStatus = Atomic<Int>(0) // 0 waiting; 1 supported; -1 unavailable
-    init(preset: SoundPreset) { gains = preset.gains; gain = preset.preamp }
-
+    let formatStatus = Atomic<Int>(0) // 0 waiting; 1 supported; -1 format; -2 stereo required
+    init(preset: SoundPreset) {
+        self.preset = preset; gains = preset.gains; gain = preset.preamp
+        bands.initialize(repeating: SoundBiquad(), count: 40)
+        pointers.initialize(repeating: nil, count: 8); strides.initialize(repeating: 0, count: 8)
+        values.initialize(repeating: 0, count: 8); dry.initialize(repeating: 0, count: 8)
+    }
+    deinit {
+        bands.deinitialize(count: 40); bands.deallocate()
+        pointers.deinitialize(count: 8); pointers.deallocate(); strides.deinitialize(count: 8); strides.deallocate()
+        values.deinitialize(count: 8); values.deallocate(); dry.deinitialize(count: 8); dry.deallocate()
+    }
     func prepare(_ format: AudioStreamBasicDescription) {
         channels = Int(format.mChannelsPerFrame)
         supported = format.mFormatID == kAudioFormatLinearPCM && format.mBitsPerChannel == 32
             && format.mFormatFlags & kAudioFormatFlagIsFloat != 0
             && format.mFormatFlags & kAudioFormatFlagIsBigEndian == 0
-            && (1...8).contains(channels) && format.mSampleRate.isFinite && format.mSampleRate >= 8_000
+            && (1...8).contains(channels) && format.mSampleRate.isFinite
+            && (8_000...192_000).contains(format.mSampleRate)
+        if preset.spatial && channels > 2 { supported = false }
+        let stereoMissing = preset == .surround && channels != 2
+        if stereoMissing { supported = false }
+        sideDelay = nil; leftRoom = nil; rightRoom = nil
         if supported {
+            rampFrames = max(1, Int(format.mSampleRate * 0.010))
             for c in 0..<channels {
-                for b in 0..<5 {
-                    bands[c * 5 + b] = .peak(hz: frequencies[b], gain: gains[b], rate: format.mSampleRate)
-                }
+                for b in 0..<5 { bands[c * 5 + b] = .peak(hz: frequencies[b], gain: gains[b], rate: format.mSampleRate) }
+            }
+            if preset == .surround { sideDelay = SoundDelay(seconds: 0.008, rate: format.mSampleRate) }
+            if preset == .hall || preset == .studio {
+                leftRoom = SoundRoom(rate: format.mSampleRate, hall: preset == .hall, right: false)
+                if channels == 2 { rightRoom = SoundRoom(rate: format.mSampleRate, hall: preset == .hall, right: true) }
             }
         }
-        framesProcessed.store(0, ordering: .relaxed)
-        formatStatus.store(supported ? 1 : -1, ordering: .releasing)
+        reset(); framesProcessed.store(0, ordering: .relaxed)
+        formatStatus.store(supported ? 1 : stereoMissing ? -2 : -1, ordering: .releasing)
     }
     func reset() {
         for i in 0..<40 { bands[i].z1 = 0; bands[i].z2 = 0 }
+        sideDelay?.clear(); leftRoom?.clear(); rightRoom?.clear(); rampPosition = 0
     }
     @discardableResult func process(_ list: UnsafeMutablePointer<AudioBufferList>, frames: Int) -> Bool {
-        guard supported, frames > 0 else { return false }
+        guard supported, frames > 0, frames <= Int.max / 32 else { return false }
         let buffers = UnsafeMutableAudioBufferListPointer(list)
         var totalChannels = 0
-        for b in buffers {
-            let count = Int(b.mNumberChannels)
-            guard count > 0, count <= channels, b.mData != nil,
-                  Int(b.mDataByteSize) >= frames * count * MemoryLayout<Float>.size else {
+        for buffer in buffers {
+            let count = Int(buffer.mNumberChannels)
+            guard count > 0, totalChannels + count <= channels, let data = buffer.mData,
+                  Int(buffer.mDataByteSize) >= frames * count * MemoryLayout<Float>.size else {
                 formatStatus.store(-1, ordering: .releasing); return false
+            }
+            for c in 0..<count {
+                pointers[totalChannels + c] = data.assumingMemoryBound(to: Float.self).advanced(by: c)
+                strides[totalChannels + c] = count
             }
             totalChannels += count
         }
         guard totalChannels == channels else { formatStatus.store(-1, ordering: .releasing); return false }
-        var offset = 0
-        for buffer in buffers {
-            let count = Int(buffer.mNumberChannels)
-            let samples = buffer.mData!.assumingMemoryBound(to: Float.self)
-            for frame in 0..<frames {
-                for channel in 0..<count {
-                    let index = frame * count + channel, band = (offset + channel) * 5
-                    var value = Double(samples[index]) * gain
-                    if !value.isFinite { value = 0 }
-                    for b in 0..<5 { value = bands[band + b].sample(value) }
-                    // Headroom is applied before EQ. This final bound also protects corrupt PCM.
-                    samples[index] = value.isFinite ? Float(min(1, max(-1, value))) : 0
-                }
+        if preset == .original { framesProcessed.wrappingAdd(frames, ordering: .relaxed); return true }
+        for frame in 0..<frames {
+            for c in 0..<channels {
+                let raw = Double(pointers[c]![frame * strides[c]])
+                dry[c] = raw.isFinite ? min(1, max(-1, raw)) : 0
+                var value = dry[c] * gain
+                for b in 0..<5 { value = bands[c * 5 + b].sample(value) }
+                values[c] = value
             }
-            offset += count
+            if let sideDelay {
+                let mid = (values[0] + values[1]) * 0.5, side = (values[0] - values[1]) * 0.5
+                let expanded = side * 1.18 + sideDelay.delay(side) * 0.10
+                values[0] = mid + expanded; values[1] = mid - expanded
+            } else if let leftRoom {
+                let left = values[0], right = channels == 2 ? values[1] : left
+                let wetL = leftRoom.sample(left * 0.82 + right * 0.18)
+                let wetR = rightRoom?.sample(right * 0.82 + left * 0.18) ?? wetL
+                let mix = preset == .hall ? 0.24 : 0.12
+                values[0] = left * (1 - mix * 0.45) + wetL * mix
+                if channels == 2 { values[1] = right * (1 - mix * 0.45) + wetR * mix }
+            }
+            // Crossfade from dry over 10ms on attach/reset, avoiding abrupt effect engagement.
+            rampPosition = min(rampFrames, rampPosition + 1)
+            let blend = Double(rampPosition) / Double(rampFrames)
+            for c in 0..<channels {
+                let value = dry[c] + (values[c] - dry[c]) * blend
+                pointers[c]![frame * strides[c]] = value.isFinite ? Float(min(1, max(-1, value))) : 0
+            }
         }
         framesProcessed.wrappingAdd(frames, ordering: .relaxed)
         return true
@@ -158,38 +264,5 @@ final class SoundTap {
         input.audioTapProcessor = tap
         let mix = AVMutableAudioMix(); mix.inputParameters = [input]
         return mix
-    }
-}
-
-struct SoundEffectsView: View {
-    @EnvironmentObject private var player: Player
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(SoundPreset.allCases) { preset in
-                        Button { player.soundPreset = preset } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: preset == .original ? "waveform" : "slider.horizontal.3")
-                                    .font(.title3).frame(width: 32)
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(preset.title).font(.headline)
-                                    Text(preset.detail).font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
-                                if player.soundPreset == preset { Image(systemName: "checkmark.circle.fill") }
-                            }.padding(17).frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
-                                .glassPlate(22)
-                        }.buttonStyle(.plain).accessibilityIdentifier("sound." + preset.rawValue)
-                            .accessibilityAddTraits(player.soundPreset == preset ? .isSelected : [])
-                    }
-                    Text(player.soundStatus).font(.footnote).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
-                        .accessibilityIdentifier("sound.status")
-                }.padding(20)
-            }.background { Paper() }.navigationTitle("音效").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
-        }.presentationDragIndicator(.visible)
     }
 }

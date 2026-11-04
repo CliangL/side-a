@@ -1,6 +1,6 @@
 # Side A
 
-自用音乐播放器，当前 iPhone／Android 手机版 **0.5.0**，车机版 **0.5.1**。包含 iPhone、Android 手机、安卓横屏车机客户端与统一曲库后台，采用毛玻璃界面、专辑封面和播放／歌词页。
+自用音乐播放器，当前 iPhone、Android 手机及车机版 **0.6.0**。包含 iPhone、Android 手机、安卓横屏车机客户端与统一曲库后台，采用毛玻璃界面、专辑封面和播放／歌词页。
 
 ## 功能
 
@@ -10,7 +10,7 @@
 - 封面、歌词等缓存及清理入口；应用不设固定磁盘缓存配额。流媒体播放缓冲不等同于完整歌曲离线下载。
 - 统一后台保存 QQ 音乐登录状态，私有发行包自动连接，每台设备独立授权。
 - 收藏、歌单、历史、偏好和播放设置自动备份；离线先存本地，联网后重试。
-- 三端场景音效：原声、人声、低音、舒缓、通勤、夜间；选择保存在本机并纳入设备备份。iOS 对解码后的 PCM 使用音频处理 tap，Android 使用当前播放器会话的 Equalizer，包含增益余量及不可用时的原声回退。夜间为柔和 EQ，不是响度压缩。
+- 三端紧凑音效菜单：原声、立体环绕、音乐厅、清澈人声、录音棚、低音增强、柔和聆听；点选即收起，选择保存在本机并纳入设备备份。iOS 对 PCM 应用立体声扩展、房间混响或 EQ；Android 使用当前播放器的系统音效能力，不支持时继续原声。旧「通勤」迁移至「清澈人声」，旧「夜间」迁移至「柔和聆听」。
 - 独立安卓车机版：横屏、左侧导航与歌曲封面 CD、全宽曲库和底部固定播放控制条。CD 随播放旋转，点击进入铺满内容区的同步歌词，左侧导航和底部播放控制始终保留；支持点击歌词定位。手机和车机使用不同应用标识与恢复身份。
 
 音源返回的曲目、音质及可播放范围取决于上游接口、账号权限和网络；不保证所有歌曲均可播放或都有无损版本。原唱排序使用可获得的信息，不能保证准确识别每首歌的原唱。音频由手机直接访问来源 CDN，后台处理搜索、授权与资料同步。
@@ -22,7 +22,7 @@
 | `outputs/SideA/` | SwiftUI、AVFoundation iPhone 工程及 XCTest |
 | `outputs/SideA-Android/` | Java 原生播放服务、WebView 界面、构建脚本及测试 |
 | `outputs/SideA-Server/` | Flask、SQLite 统一后台，QQ／酷我适配器及受控回归测试 |
-| `outputs/安装 Side A 0.5.0 到 iPhone.command` | 配合已签名 IPA 使用的 Mac 安装工具 |
+| `outputs/安装 Side A 0.6.0 到 iPhone.command` | 配合已签名 IPA 使用的 Mac 安装工具 |
 
 仓库仅保存源码、文档和必要工具。私有安装包、签名材料、安装授权、设备恢复种子、个人数据及临时构建目录不提交 Git。
 
@@ -64,8 +64,8 @@ xcodebuild -project outputs/SideA/SideA.xcodeproj -scheme SideA \
 使用统一后台时，将 `CentralCatalog.java` 中的 `PERSONAL_BASE` 配置为自己的 HTTPS 地址。`SIDEA_SETUP_FILE` 与 `SIDEA_RECOVERY_FILE` 在构建时注入 APK；恢复种子应独立保管，并在后续版本中保持不变。
 
 ```sh
-bash outputs/SideA-Android/build.sh outputs/SideA-0.5.0-Android.apk
-SIDEA_VARIANT=car bash outputs/SideA-Android/build.sh outputs/SideA-0.5.1-Car.apk
+bash outputs/SideA-Android/build.sh outputs/SideA-0.6.0-Android.apk
+SIDEA_VARIANT=car bash outputs/SideA-Android/build.sh outputs/SideA-0.6.0-Car.apk
 ```
 
 车机包适用于可直接安装 APK、Android 9 或更新版本的设备；使用 `app/src/car/AndroidManifest.xml`，横屏界面按 800×480、1024×600、1280×720 和 1920×720 验证。具体车机的系统栏、屏幕密度、WebView 和音频硬件仍需真机确认。这是独立车机 APK，尚未实现 Android Auto 投屏或 AAOS 系统媒体入口。
@@ -124,7 +124,12 @@ iOS 的 `SoundEffectsTests` 验证 PCM 频响、立体声、备份兼容和真�
 
 ## 音效方案
 
-评估了 [Media3](https://github.com/androidx/media)、[AudioKit](https://github.com/AudioKit/AudioKit) 和 [RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP)。本版使用现有播放器的系统处理接口与自行实现的场景参数，无需 Root、系统音频捕获或额外音效 App，未引入上述项目的代码。Android 使用 [AudioEffect / Equalizer](https://developer.android.com/reference/android/media/audiofx/Equalizer)，iOS 使用 [MTAudioProcessingTap](https://developer.apple.com/documentation/mediatoolbox/mtaudioprocessingtap)。预设名称一致，不保证不同设备的频带响应完全相同；界面只在实际处理成功后显示启用状态。
+评估了 [Media3](https://github.com/androidx/media)、[AudioKit](https://github.com/AudioKit/AudioKit) 与 [SoundpipeAudioKit](https://github.com/AudioKit/SoundpipeAudioKit)。本版沿用现有播放器，未复制这些项目的代码，也不需要 Root、系统音频捕获或额外音效 App。
+
+- iOS 使用 [MTAudioProcessingTap](https://developer.apple.com/documentation/mediatoolbox/mtaudioprocessingtap)：环绕为保持声像中心的 M/S 扩展与 8ms 侧向反射；音乐厅／录音棚分别采用长／短房间的低通反馈延迟和扩散混响；人声／低音／柔和为 EQ。延迟缓存预分配，切换渐入，seek 清除尾音，预留增益余量。环绕要求双声道，房间效果支持单／双声道；不支持的格式旁路。
+- Android 使用当前播放器 session 的 [Equalizer](https://developer.android.com/reference/android/media/audiofx/Equalizer)／[Virtualizer](https://developer.android.com/reference/android/media/audiofx/Virtualizer)，混响使用显式连接到本 MediaPlayer 的辅助效果。辅助引擎可能由系统共享，因此使用低控制优先级、控制权检查和失控断开；不对 session 0 使用全局插入效果，不修改系统音效设置。设备或当前输出路由不支持时会显示回退状态。
+
+这些是立体声空间模拟和房间效果，不代表杜比授权、多声道输出或商业录音棚还原。不同设备的音频引擎响应可能不同；测试验证处理、衰减与稳定性，听感偏好仍取决于音乐和播放设备。原声用于直接保留录音。
 
 Android 设备资料测试位于 `tests/device-backup/`，只允许在模拟器运行。使用与目标 APK 相同的签名构建测试 APK，再运行 `studio.sidea.cloudqa.CloudProbe` 的 `unit` 模式。涉及搜索、播放和重装恢复的集成测试需要独立测试设备及私有后台配置；不要对日常使用的资料库运行测试夹具。
 

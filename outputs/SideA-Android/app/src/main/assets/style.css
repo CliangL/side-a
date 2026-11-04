@@ -1129,15 +1129,18 @@ h3 {
 #searchScopes button { flex: none; white-space: nowrap; min-width: 55px; min-height: 36px; padding: 4px 12px; border-radius: 18px; }
 #searchScopes button[aria-pressed='true'] { background: var(--raised); color: var(--teal); font-weight: 600; }
 
-/* Scene effects share the native player's actual preset and capability state. */
-.sound-intro{color:var(--sub);margin:0 0 16px;font-size:14px}
-.sound-grid{display:grid;gap:9px}
-.sound-preset{display:flex;align-items:center;gap:13px;min-height:73px;padding:12px 14px;text-align:left;border:1px solid var(--line);border-radius:16px;background:var(--wash)}
-.sound-preset .txt{flex:1}.sound-preset .txt strong{font-size:17px}.sound-preset .txt small{white-space:normal;line-height:1.4;font-size:12px}
-.sound-icon{width:36px;flex:none;color:var(--sub)}.sound-check{width:23px;flex:none}
-.sound-preset.selected{border-color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal)}
-.sound-preset.selected .sound-icon,.sound-preset.selected .sound-check{color:var(--teal)}
-.sound-status{color:var(--sub);font-size:13px;margin:14px 2px 0;line-height:1.5}
+/* Compact single-choice sound menu; actual capability comes from the native player. */
+#shade[data-kind="sound"]{align-items:center;padding:16px}
+#sheet[data-kind="sound"]{width:min(320px,100%);max-height:calc(100% - 32px);padding:10px 16px 12px;border-radius:21px}
+#sheet[data-kind="sound"] .handle{display:none}
+#sheet[data-kind="sound"] .modalhead{margin:0 0 5px;min-height:44px}
+#sheet[data-kind="sound"] .modalhead h2{font-size:18px}
+#sheet[data-kind="sound"] .modalhead button{min-width:44px;min-height:44px}
+.sound-options{display:grid}
+.sound-option{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:46px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:16px;text-align:left}
+.sound-option:last-child{border-bottom:0}.sound-option.selected{color:var(--teal);font-weight:600}
+.sound-check{width:20px;flex:none}.sound-check .ic{font-size:14px}
+.sound-status{color:var(--sub);font-size:12px;line-height:1.4;margin:10px 4px 0}
 
 /* Car layout uses a full-width driving console, independent of the phone player. */
 html.car{color-scheme:dark;--paper:#121d1c;--ink:#f1f0e5;--sub:#a6b9ae;--line:#ffffff16;--wash:#243632;--glass:#273c3894;--raised:#344a44;--teal:#c5e2bf;--rose:#edaa9b;--shadow:#0004;--car-nav:96px}
@@ -1217,7 +1220,7 @@ html.car{color-scheme:dark;--paper:#121d1c;--ink:#f1f0e5;--sub:#a6b9ae;--line:#f
 .car-now-tools button:active{background:#dce8bf14}.car-now-tools .ic{font-size:21px}
 .car-play-error,.car-load{grid-column:1/-1;font-size:12px;color:#f0d1ba;line-height:1.5;min-width:0}.car-play-error{padding-top:6px;display:flex;gap:10px;align-items:center}.car-play-error .pill{min-height:40px;padding:4px 12px;font-size:13px;flex:none}.car-load{position:absolute;right:24px;top:-26px;color:var(--sub)}
 .car #shade{align-items:center;padding:24px;background:#061416aa;backdrop-filter:blur(10px)}.car #sheet{width:min(730px,100%);max-height:calc(100% - 16px);padding:20px 26px 24px;border-radius:24px;border:1px solid #ffffff20;background:linear-gradient(135deg,#2a3c38,#182626);box-shadow:0 15px 80px #0007}
-.car #sheet .handle{display:none}.car .modalhead h2{font-size:24px}.car .modalhead button{min-height:56px;min-width:56px}.car .sheetrow{min-height:64px;font-size:18px}.car .hint{font-size:15px;line-height:1.5}.car .empty{font-size:17px}.car .queueitem{min-height:76px}.car .queueitem .trackpick{min-height:62px}.car .queueitem .icbtn{min-width:56px}.car .sound-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.car .sound-preset{min-height:98px;padding:16px;gap:9px}.car .sound-preset .txt strong{font-size:19px}.car .sound-preset .txt small{font-size:13px}.car .sound-intro{font-size:16px}.car .sound-status{font-size:15px}
+.car #sheet .handle{display:none}.car .modalhead h2{font-size:24px}.car .modalhead button{min-height:56px;min-width:56px}.car .sheetrow{min-height:64px;font-size:18px}.car .hint{font-size:15px;line-height:1.5}.car .empty{font-size:17px}.car .queueitem{min-height:76px}.car .queueitem .trackpick{min-height:62px}.car .queueitem .icbtn{min-width:56px}.car .sound-status{font-size:15px}
 
 /* Lyrics fill the content area; navigation and transport keep their exact positions. */
 .car.car-lyrics-open #main{padding:0;overflow:hidden}
@@ -1231,6 +1234,15 @@ html.car{color-scheme:dark;--paper:#121d1c;--ink:#f1f0e5;--sub:#a6b9ae;--line:#f
 .car #notice{font-size:16px;bottom:150px;max-width:70%;border:1px solid #ffffff20;padding:13px 22px}
 @media (max-width:1100px){html.car{--car-nav:84px}.car #carNav{padding-inline:7px;gap:16px}.car .car-page{padding-inline:24px}.car .section,.car .bar,.car .pad{margin-inline:24px}.car .searchbar{width:calc(100% - 48px);margin-inline:24px}.car-mixes{gap:14px}.car-mix-caption{left:16px;right:14px;bottom:16px}.car-mix-caption strong{font-size:22px}.car-header h1{font-size:29px}.car .car-collection-actions{gap:8px}.car .car-collection-actions .pill{padding-inline:12px}.car #searchScopes button{padding-inline:10px;font-size:15px;min-width:68px}.car #carNow{margin-inline:18px;padding-inline:18px;column-gap:12px}.car-controls{gap:5px}.car-now-tools{gap:4px}.car-song-list{column-gap:24px}.car-track-info h2,.car-track-info strong{font-size:20px}}
 @media (max-width:850px){html.car{--car-nav:78px}.car #carNav{padding-inline:6px}.car-disc-button{width:66px;min-height:66px!important}.car-disc{width:60px;height:60px}.car .car-page{padding-inline:18px}.car #carNow{margin:0 12px 12px;padding:0 12px 10px;grid-template-columns:minmax(115px,1fr) auto minmax(168px,1fr);column-gap:8px;grid-template-rows:30px 66px;border-radius:20px}.car-controls{gap:2px}.car-controls>button{width:50px;min-width:50px;height:56px;font-size:22px}.car-controls>.car-play{width:62px;min-width:62px;height:62px}.car-now-tools{gap:0}.car-now-tools button{min-width:56px;font-size:11px}.car-track-info h2,.car-track-info strong{font-size:18px}.car-track-info .car-song-title>span,.car-track-info p,.car-track-info small{font-size:12px}.car-mixes{gap:10px}.car-mix-caption{left:13px;bottom:14px}.car-mix-caption strong{font-size:20px}.car-mix-caption small{font-size:8px}.car-song-list{column-gap:22px}.car .row>.trackpick{gap:10px}.car .txt strong{font-size:17px}.car .txt small{font-size:12px}.car .thumb{width:48px;height:48px}.car .row .icbtn{min-width:48px}.car-lyrics-page{padding-inline:24px}.car-lyrics-heading h1{font-size:21px}.car-playlists{grid-template-columns:1fr}}
-@media (max-height:620px){.car #carNav{gap:12px;padding-top:12px}.car-nav-items{gap:4px}.car-nav-items>button{min-height:62px}.car #main{padding-top:6px}.car .car-header{margin-bottom:18px;min-height:60px}.car .car-mix{height:140px}.car .car-section-head{margin-top:12px}.car .car-mix-caption>span{display:none}.car .sound-preset{min-height:84px}.car #sheet{padding-block:14px}.car .car-header .caps{font-size:9px;letter-spacing:2px}.car-lyrics-page{padding-top:10px}.car-lyric-line{margin-bottom:20px}.car #carNow{margin-bottom:12px}}
+@media (max-height:620px){.car #carNav{gap:12px;padding-top:12px}.car-nav-items{gap:4px}.car-nav-items>button{min-height:62px}.car #main{padding-top:6px}.car .car-header{margin-bottom:18px;min-height:60px}.car .car-mix{height:140px}.car .car-section-head{margin-top:12px}.car .car-mix-caption>span{display:none}.car #sheet{padding-block:14px}.car .car-header .caps{font-size:9px;letter-spacing:2px}.car-lyrics-page{padding-top:10px}.car-lyric-line{margin-bottom:20px}.car #carNow{margin-bottom:12px}}
 @media (max-height:480px){.car #carNav{padding-block:8px;gap:8px}.car-disc-button{min-height:64px!important;height:64px}.car-disc{width:58px;height:58px}.car-nav-items{gap:1px}.car-nav-items>button{min-height:56px;gap:3px;font-size:11px}.car-nav-items .ic{font-size:20px}.car .car-header .caps{display:none}.car .car-header{min-height:56px;margin-bottom:10px}.car .car-mix{height:120px}.car-mix-caption{bottom:14px}.car .car-section-head{margin:9px 0 0}.car-lyrics-header{min-height:56px}.car-lyric-line{font-size:28px}.car #carNow{grid-template-rows:28px 64px;padding-bottom:8px}.car-controls>.car-play{height:62px;width:62px;min-width:62px}.car .car-header h1{font-size:27px}.car .car-lyrics-heading h1{font-size:20px}}
 @media (max-height:380px){.car #carNav{gap:4px}.car-nav-items>button{min-height:48px;display:flex;justify-content:center;gap:5px}.car-nav-items .ic{font-size:16px}.car-disc-button{min-height:56px!important;height:56px}.car-disc{height:50px;width:50px}.car-lyrics-header{margin:0}.car-lyric-line{font-size:24px}}
+
+/* Keep a compact menu in the car while preserving generous tap targets. */
+.car #shade[data-kind="sound"]{padding:16px}
+.car #sheet[data-kind="sound"]{width:min(330px,100%);padding:10px 16px 12px;max-height:calc(100% - 32px)}
+.car #sheet[data-kind="sound"] .modalhead{min-height:48px;margin-bottom:4px}
+.car #sheet[data-kind="sound"] .modalhead h2{font-size:20px}
+.car #sheet[data-kind="sound"] .modalhead button{min-height:48px;min-width:48px}
+.car #sheet[data-kind="sound"] .sound-option{min-height:48px;font-size:17px;padding:9px 4px}
+.car #sheet[data-kind="sound"] .sound-status{font-size:12px}

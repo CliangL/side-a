@@ -13,9 +13,15 @@ public final class SoundEffectsTest {
         public boolean enable(){on=allowEnable;return allowEnable;}public void close(){closed=true;on=false;}
     }
     static class Fake implements SoundEffects.Factory,SoundEffects.Volume {
-        int opens,lastSession;float volume=1;boolean fail;Handle handle=new Handle();
+        int opens,lastSession,spatialOpens;float volume=1;boolean fail;Handle handle=new Handle();Spatial spatial=new Spatial();
+        public SoundEffects.SpatialHandle spatial(int session,String id,SoundEffects.Aux aux){spatialOpens++;lastSession=session;if(fail)throw new UnsupportedOperationException();return spatial;}
         public SoundEffects.EqualizerHandle open(int session){opens++;lastSession=session;if(fail)throw new UnsupportedOperationException();return handle;}
         public void set(float value){volume=value;}
+    }
+    static class Spatial implements SoundEffects.SpatialHandle {
+        boolean control=true,on=true,processing=true,closed;
+        public boolean hasControl(){return control;}public boolean enabled(){return on;}public boolean processing(){return processing;}
+        public String engine(){return "test-spatial";}public void close(){closed=true;}
     }
     public static void main(String[] args){
         check(SoundPreset.normalize("unknown").equals("original"),"unknown preset must be original");
@@ -47,6 +53,26 @@ public final class SoundEffectsTest {
         check(effects.status().equals("unavailable")&&f.volume==1,"invalid bands must fall back");
         effects.attach(29,gain->{throw new IllegalStateException();});effects.detach();
         check(effects.status().equals("pending"),"failed volume access must not crash service cleanup");
+        check(SoundPreset.normalize("commute").equals("vocal")&&SoundPreset.normalize("night").equals("soft"),"legacy preferences migrate");
+        f=new Fake();effects=new SoundEffects(f);effects.select("hall");effects.attach(31,f);
+        check(effects.status().equals("active")&&f.opens==0&&f.spatialOpens==1&&effects.engine().equals("test-spatial"),"hall requires real spatial processor, not EQ");
+        Spatial old=f.spatial;f.spatial=new Spatial();effects.select("studio");
+        check(old.closed&&f.spatialOpens==2&&effects.status().equals("active"),"switching rooms releases former tail");
+        old=f.spatial;f.spatial=new Spatial();effects.reset();
+        check(old.closed&&f.spatialOpens==3,"seek clears spatial tail");
+        effects.select("original");check(f.spatial.closed&&f.volume==1&&effects.status().equals("off"),"original removes wet effect");
+        f.spatial=new Spatial();f.spatial.processing=false;effects.select("surround");
+        check(effects.status().equals("pending"),"enabled virtualizer alone is not active");
+        effects.check();f.spatial.processing=true;
+        check(effects.check()&&effects.status().equals("active"),"route activation confirms processing");
+        f.spatial.processing=false;check(effects.check()&&effects.status().equals("unavailable")&&f.volume==1,"unsupported output route bypasses");
+        f.spatial=new Spatial();f.spatial.processing=false;effects.select("surround");effects.check();effects.check();effects.check();
+        check(effects.status().equals("unavailable")&&f.spatial.closed,"unsupported route cannot remain pending forever");
+        f.spatial=new Spatial();effects.select("hall");f.spatial.control=false;effects.check();
+        check(f.spatial.closed&&effects.status().equals("unavailable"),"shared effect control loss disconnects own player");
+        f.spatial=new Spatial();effects.select("hall");effects.detach();
+        check(f.spatial.closed&&effects.status().equals("pending"),"pause discards spatial handle");
+        f.fail=true;effects.attach(32,f);check(effects.status().equals("unavailable")&&f.volume==1,"missing room processor does not claim success");
         System.out.println(checks+" sound assertions passed");
     }
 }

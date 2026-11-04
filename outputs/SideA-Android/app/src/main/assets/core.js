@@ -264,6 +264,8 @@ function sheetRow(action, arg, label, icon, cls = '') {
 }
 function sheet(title, body, kind = 'options') {
   st.sheet = kind;
+  el('shade').dataset.kind = kind;
+  el('sheet').dataset.kind = kind;
   el('shell').setAttribute('inert', '');
   el('player').setAttribute('inert', '');
   el('shade').hidden = false;
@@ -467,6 +469,8 @@ function applyPlayer(next) {
     else failedPlaybacks.delete(id);
     if(before !== failedPlaybacks.has(id) && current().name === 'search')renderResults();
   }
+  if (next.sound?.status === 'unavailable' && (previous.sound?.status !== 'unavailable' || previous.sound?.preset !== next.sound.preset))
+    notify(next.sound.message || '当前输出暂不支持此音效，已使用原声');
   refreshEmbedded(next);
   renderDock();
   if (openingTrack && openingExpires > Date.now() && next.track && openingTrack === key(next.track)) {

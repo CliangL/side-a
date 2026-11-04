@@ -46,7 +46,7 @@ async function openFixture(browser, viewport, uiMode='car', {idle=false, reduced
       ctx.fillStyle='rgba(255,255,235,.8)';ctx.beginPath();ctx.arc(350,120,48,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f3eee1';ctx.font='italic 40px Georgia';ctx.fillText('Side A',38,447);ctx.font='14px sans-serif';ctx.fillText('ON THE ROAD / '+String(i+1).padStart(2,'0'),40,474);
       const result=canvas.toDataURL('image/png');covers.set(t.id,result);return result;
     }
-    const presets=[['original','原声','保留歌曲原本的声音'],['vocal','人声','让歌声更清晰'],['bass','低音','更饱满的低频'],['soft','舒缓','柔和耐听'],['commute','通勤','旅途中清楚听见细节'],['night','夜间','轻柔安静的声音']].map(([id,name,detail])=>({id,name,detail}));
+    const presets=[['original','原声'],['surround','立体环绕'],['hall','音乐厅'],['vocal','清澈人声'],['studio','录音棚'],['bass','低音增强'],['soft','柔和聆听']].map(([id,name])=>({id,name}));
     let library={favorites:[songs[0]],recent:[songs[1],songs[0]],playlists:[{id:'qa-list',name:'在路上',tracks:songs.slice(0,4)}],trackingEnabled:true,revision:1,reason:'沿着你喜欢的旋律'};
     let settings={centralBase:'https://qa.invalid',searchSource:'all',allSources:['qq','wy','kw','jx'],cacheBytes:8388608,preferLossless:true,losslessOnly:false,cellularDataSaver:false,soundPreset:'original',soundPresets:presets};
     let player={track:idle?null:songs[0],queue:idle?[]:songs,index:0,playing:!idle,loading:false,error:'',elapsed:idle?0:43,duration:idle?0:234,mode:'sequence',quality:'无损 · FLAC',sound:{preset:'original',status:'off',engine:''}};

@@ -354,6 +354,9 @@ public final class PlaybackService extends Service {
             quality=stream.optBoolean("flac") ? "无损 · FLAC" + (stream.optInt("bits")>0 ? " "+stream.optInt("bits")+"-bit" : "")
                     : stream.optInt("br")>0 ? stream.optInt("br")+" kbps" : "在线音频";
             MediaPlayer p=new MediaPlayer(); engine=p;
+            p.addOnRoutingChangedListener(routing->{
+                if(engine==p && ready && wantsPlay){attachSound(p);publish(false);}
+            },owner);
             p.setAudioAttributes(attributes); p.setWakeMode(this,PowerManager.PARTIAL_WAKE_LOCK);
             p.setOnErrorListener((mp,what,extra)->{ if(valid(attempt)) recover("播放器无法读取音源，请重试"); return true; });
             p.setOnPreparedListener(mp->{
@@ -382,6 +385,14 @@ public final class PlaybackService extends Service {
             fetchCover(current(),stream,attempt);
         } catch(Exception e) { recover("无法打开这首歌，点播放可重试"); }
     }
+    private void attachSound(MediaPlayer target) {
+        // Route changes (speaker/headphones/Bluetooth) retry only effects; never start playback.
+        sound.select(getSharedPreferences(SETTINGS,0).getString("soundPreset",SoundPreset.ORIGINAL));
+        sound.attach(target.getAudioSessionId(),gain->target.setVolume(gain,gain),new SoundEffects.Aux(){
+            public void attach(int effect){target.attachAuxEffect(effect);}
+            public void send(float level){target.setAuxEffectSendLevel(level);}
+        });
+    }
     private void startReady() {
         if(engine==null || !ready || !wantsPlay) return;
         if(!hasFocus) {
@@ -389,9 +400,7 @@ public final class PlaybackService extends Service {
             if(!hasFocus) {fail("暂时无法获得音频焦点，请稍后重试");return;}
         }
         try {
-            sound.select(getSharedPreferences(SETTINGS,0).getString("soundPreset",SoundPreset.ORIGINAL));
-            MediaPlayer target=engine;
-            sound.attach(target.getAudioSessionId(),gain->target.setVolume(gain,gain));
+            attachSound(engine);
             engine.start(); loading=true; lastTick=0; lastPosition=engine.getCurrentPosition()/1000d;
             lastProgress=SystemClock.elapsedRealtime(); publish(true);
         } catch(RuntimeException e) { recover("未能开始播放，请重试"); }
@@ -419,7 +428,7 @@ public final class PlaybackService extends Service {
         if(!Double.isFinite(seconds) || current()==null) return;
         elapsed=Math.max(0,duration>0?Math.min(duration,seconds):seconds);
         if(ready) {
-            try { engine.seekTo(Math.round(elapsed*1000),MediaPlayer.SEEK_CLOSEST); } catch(RuntimeException ignored) {}
+            try { sound.reset(); engine.seekTo(Math.round(elapsed*1000),MediaPlayer.SEEK_CLOSEST); } catch(RuntimeException ignored) {}
         }
         lastTick=0; lastPosition=elapsed; persist(); publish(true);
     }

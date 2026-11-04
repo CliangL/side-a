@@ -97,7 +97,7 @@ public final class CloudProbe extends Instrumentation {
             check((boolean)call(library,"cloudDirty",new Class[]{Context.class},app)&&capture().getJSONObject("library").getJSONArray("favorites").length()==2,"acknowledgment discarded in-flight local edit");
             JSONObject soundRemote=snap(obj("favorites",arr(a)));soundRemote.put("settings",obj("soundPreset","night"));
             settingsDisk.edit().remove("soundPreset").commit();setState(obj(),obj());
-            check(mergeCloud(app,soundRemote,1).getJSONObject("settings").getString("soundPreset").equals("night")&&settingsDisk.getString("soundPreset","").equals("night"),"sound selection not restored");
+            check(mergeCloud(app,soundRemote,1).getJSONObject("settings").getString("soundPreset").equals("soft")&&settingsDisk.getString("soundPreset","").equals("soft"),"sound selection not restored");
             settingsDisk.edit().putString("soundPreset","vocal").commit();
             JSONObject other=copy(soundRemote);other.getJSONObject("settings").put("searchSource","kw");
             JSONObject soundMerged=mergeCloud(app,other,2).getJSONObject("settings");
@@ -273,6 +273,59 @@ public final class CloudProbe extends Instrumentation {
             detach.invoke(effects);if(competitor!=null)competitor.release();player.release();if(next!=null)next.release();tone.delete();
         }
     }
+    void spatial()throws Exception{
+        File tone=new File(app.getCacheDir(),"spatial-test.wav");
+        int rate=48000,frames=rate*2;java.nio.ByteBuffer bytes=java.nio.ByteBuffer.allocate(44+frames*4).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        bytes.put("RIFF".getBytes(StandardCharsets.US_ASCII)).putInt(36+frames*4).put("WAVEfmt ".getBytes(StandardCharsets.US_ASCII));
+        bytes.putInt(16).putShort((short)1).putShort((short)2).putInt(rate).putInt(rate*4).putShort((short)4).putShort((short)16);
+        bytes.put("data".getBytes(StandardCharsets.US_ASCII)).putInt(frames*4);
+        for(int n=0;n<frames;n++){bytes.putShort((short)(1800*Math.sin(2*Math.PI*440*n/rate)));bytes.putShort((short)(1800*Math.sin(2*Math.PI*660*n/rate)));}
+        java.nio.file.Files.write(tone.toPath(),bytes.array());
+        Class<?> wrapper=app.getClassLoader().loadClass("studio.sidea.android.AndroidSoundEffects"),control=app.getClassLoader().loadClass("studio.sidea.android.SoundEffects"),volumeClass=app.getClassLoader().loadClass("studio.sidea.android.SoundEffects$Volume"),auxClass=app.getClassLoader().loadClass("studio.sidea.android.SoundEffects$Aux");
+        Object effects=call(wrapper,"create",new Class[]{});
+        Method attach=method(control,"attach",int.class,volumeClass,auxClass),select=method(control,"select",String.class),state=method(control,"status"),detach=method(control,"detach"),checkState=method(control,"check");
+        android.media.MediaPlayer player=new android.media.MediaPlayer();final float[] send={0};final int[] effectID={0};
+        android.media.audiofx.EnvironmentalReverb occupiedRoom=null;android.media.audiofx.PresetReverb occupiedPreset=null;
+        try{
+            player.setDataSource(tone.getAbsolutePath());player.prepare();player.setLooping(true);player.start();
+            Object gain=java.lang.reflect.Proxy.newProxyInstance(app.getClassLoader(),new Class[]{volumeClass},(p,m,a)->{player.setVolume((float)a[0],(float)a[0]);return null;});
+            Object aux=java.lang.reflect.Proxy.newProxyInstance(app.getClassLoader(),new Class[]{auxClass},(p,m,a)->{if(m.getName().equals("attach")){effectID[0]=(int)a[0];player.attachAuxEffect(effectID[0]);}else{send[0]=(float)a[0];player.setAuxEffectSendLevel(send[0]);}return null;});
+            attach.invoke(effects,player.getAudioSessionId(),gain,aux);
+            for(String preset:new String[]{"hall","studio"}){
+                select.invoke(effects,preset);checkState.invoke(effects);
+                check(state.invoke(effects).equals("active"),"AOSP real room effect unavailable: "+preset);
+                check(effectID[0]>0&&send[0]>0&&send[0]<.3f,"room must use a restrained explicit own-player aux send");
+                int position=player.getCurrentPosition();Thread.sleep(250);check(player.isPlaying()&&position!=player.getCurrentPosition(),"room selection stopped playback");
+                method(control,"reset").invoke(effects);check(state.invoke(effects).equals("active"),"seek tail reset did not reattach");
+                select.invoke(effects,"original");check(effectID[0]==0&&send[0]==0,"original left reverb send attached");
+                out.putString(preset,"real auxiliary reverb enabled; own send and detach verified");
+            }
+            for(int i=0;i<12;i++){
+                select.invoke(effects,i%2==0?"hall":"studio");
+                check(state.invoke(effects).equals("active"),"rapid room switch fell back");
+                method(control,"reset").invoke(effects);check(state.invoke(effects).equals("active"),"rapid room reset fell back");
+            }
+            out.putString("roomEngine",(String)method(control,"engine").invoke(effects));
+            out.putString("switching","12 immediate room switches and tail resets kept effect active");
+            select.invoke(effects,"surround");for(int i=0;i<4;i++){Thread.sleep(160);checkState.invoke(effects);}
+            String surround=(String)state.invoke(effects);check(surround.equals("active")||surround.equals("unavailable"),"virtualizer activation stuck pending");
+            if(surround.equals("active")){
+                Field f=control.getDeclaredField("spatial");f.setAccessible(true);Object handle=f.get(effects);
+                check((boolean)method(handle.getClass(),"processing").invoke(handle),"enabled virtualizer must have active route");
+            }
+            out.putString("surround",surround+" (speaker route capability checked)");
+            select.invoke(effects,"hall");
+            occupiedRoom=new android.media.audiofx.EnvironmentalReverb(100,0);occupiedPreset=new android.media.audiofx.PresetReverb(100,0);
+            occupiedPreset.setPreset(android.media.audiofx.PresetReverb.PRESET_SMALLROOM);
+            short expected=occupiedPreset.getPreset();int decay=occupiedRoom.getDecayTime();
+            Thread.sleep(250);checkState.invoke(effects);
+            check(state.invoke(effects).equals("unavailable")&&effectID[0]==0&&send[0]==0,"lost shared engine control did not disconnect own player");
+            select.invoke(effects,"hall");check(state.invoke(effects).equals("unavailable"),"competing app effect was taken over");
+            check(occupiedPreset.getPreset()==expected&&occupiedRoom.getDecayTime()==decay,"other app's reverb was changed");
+            check(effectID[0]==0&&send[0]==0,"unavailable room retained a send");
+            out.putString("ownership","higher-priority auxiliary engines remain untouched; original and seek cleanup passed");
+        }finally{detach.invoke(effects);if(occupiedRoom!=null)occupiedRoom.release();if(occupiedPreset!=null)occupiedPreset.release();player.release();tone.delete();}
+    }
     void identity()throws Exception{
         try(InputStream setup=app.getAssets().open("SideASetup.txt")){throw new Exception("Identity fixture must not contain an enrollment ticket");}
         catch(FileNotFoundException expected){}
@@ -311,7 +364,7 @@ public final class CloudProbe extends Instrumentation {
             library=app.getClassLoader().loadClass("studio.sidea.android.Library");central=app.getClassLoader().loadClass("studio.sidea.android.CentralCatalog");
             String mode=opts.getString("mode","unit");
             if(!mode.equals("seed")){cloud=app.getClassLoader().loadClass("studio.sidea.android.CloudLibrary");merge=app.getClassLoader().loadClass("studio.sidea.android.LibraryMerge");}
-            switch(mode){case "identity":identity();break;case "sound":sound();break;case "unit":tests();persistenceTests();break;case "seed":seedOld();break;case "upgrade":upgrade();break;case "restore":restore();break;case "offline":offline();break;case "conflict":conflict();break;case "sources":sources();break;case "checkpoint":startCloud();waitBackup();evidence.edit().putString("expected",capture().toString()).commit();out.putString("checkpoint","current library and source preference acknowledged");break;default:throw new Exception("unknown mode");}
+            switch(mode){case "identity":identity();break;case "sound":sound();break;case "spatial":spatial();break;case "unit":tests();persistenceTests();break;case "seed":seedOld();break;case "upgrade":upgrade();break;case "restore":restore();break;case "offline":offline();break;case "conflict":conflict();break;case "sources":sources();break;case "checkpoint":startCloud();waitBackup();evidence.edit().putString("expected",capture().toString()).commit();out.putString("checkpoint","current library and source preference acknowledged");break;default:throw new Exception("unknown mode");}
             try(FileOutputStream file=new FileOutputStream(evidenceFile)){file.write(new JSONObject(evidence.getAll()).toString().getBytes(StandardCharsets.UTF_8));}
             out.putString("result","PASS");finish(Activity.RESULT_OK,out);
         }catch(Throwable failure){Throwable t=failure;while(t.getCause()!=null)t=t.getCause();out.putString("result","FAIL");out.putString("detail",t.getClass().getSimpleName()+": "+t.getMessage());finish(Activity.RESULT_CANCELED,out);}

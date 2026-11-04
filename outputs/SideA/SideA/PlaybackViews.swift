@@ -140,7 +140,7 @@ struct SearchView: View {
     }
 }
 
-private enum PlaySheet: Int, Identifiable { case queue, add, style, sound; var id:Int { rawValue } }
+private enum PlaySheet: Int, Identifiable { case queue, add, style; var id:Int { rawValue } }
 private enum PlayerPage: Int { case cover, lyrics }
 
 struct PlayingView: View {
@@ -192,7 +192,6 @@ struct PlayingView: View {
             .sheet(item:$sheet) { destination in
                 switch destination {
                 case .queue: QueueView().preferredColorScheme(.light)
-                case .sound: SoundEffectsView()
                 case .add: if let current { AddToPlaylistView(track:current).preferredColorScheme(.light) }
                 case .style: if let current { StyleFeedbackView(track:current).preferredColorScheme(.light) }
                 }
@@ -417,7 +416,8 @@ struct PlayingView: View {
                 Toggle("移动网络省流",isOn:$player.cellularDataSaver).disabled(player.losslessOnly)
             } label: { Label("音质",systemImage:"waveform").frame(minHeight: 44) }
             Spacer()
-            Button { sheet = .sound } label: { Label("音效", systemImage: "slider.horizontal.3").frame(minHeight: 44) }.accessibilityIdentifier("player.sound")
+            Menu { SoundEffectChoices() } label: { Label("音效", systemImage: "slider.horizontal.3").frame(minHeight: 44) }
+                .menuOrder(.fixed).accessibilityIdentifier("player.sound").accessibilityValue(player.soundPreset.title)
             Spacer(); Button { sheet = .queue } label: { Label("待播",systemImage:"list.bullet").frame(minHeight: 44) }.accessibilityIdentifier("player.queue")
         }.font(.footnote.weight(.medium)).foregroundStyle(.white.opacity(0.82)).buttonStyle(.plain)
     }

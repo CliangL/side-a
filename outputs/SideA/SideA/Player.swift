@@ -127,7 +127,7 @@ final class Player: ObservableObject {
         preferLossless = defaults.object(forKey: "sidea.preferLossless") as? Bool ?? true
         losslessOnly = defaults.bool(forKey: "sidea.losslessOnly")
         cellularDataSaver = defaults.object(forKey: "sidea.cellularDataSaver") as? Bool ?? true
-        soundPreset = SoundPreset(rawValue: defaults.string(forKey: "sidea.soundPreset") ?? "") ?? .original
+        soundPreset = SoundPreset.restored(defaults.string(forKey: "sidea.soundPreset"))
         soundStatus = soundPreset == .original ? "原声 · 未启用音效" : "播放时应用"
         networkPath.start(queue: DispatchQueue(label: "sidea.network-path", qos: .utility))
         mode = PlaybackMode(rawValue: defaults.string(forKey: "sidea.playMode") ?? "") ?? .sequence
@@ -345,7 +345,9 @@ final class Player: ObservableObject {
     }
     private func updateSoundStatus() {
         guard soundPreset != .original, let soundTap else { return }
-        if soundTap.processor.formatStatus.load(ordering: .acquiring) < 0 {
+        if soundTap.processor.formatStatus.load(ordering: .acquiring) == -2 {
+            soundStatus = "立体环绕需要双声道音源，继续原声播放"
+        } else if soundTap.processor.formatStatus.load(ordering: .acquiring) < 0 {
             soundStatus = "当前音源暂不支持音效，继续原声播放"
         } else if soundTap.processor.framesProcessed.load(ordering: .relaxed) > 0 {
             soundStatus = soundPreset.title + " · 已开启"
@@ -529,7 +531,7 @@ final class Player: ObservableObject {
         applyingCloud = true
         defer { applyingCloud = false }
         mode = PlaybackMode(rawValue: saved.mode) ?? .sequence
-        soundPreset = SoundPreset(rawValue: saved.soundPreset ?? "") ?? .original
+        soundPreset = SoundPreset.restored(saved.soundPreset)
         preferLossless = saved.preferLossless; cellularDataSaver = saved.cellularDataSaver; losslessOnly = saved.losslessOnly
         // Cloud restoration must never interrupt a song the listener has already started.
         if !intentToPlay && !isPlaying && !isLoading, cloudSnapshot.resume != saved.resume {

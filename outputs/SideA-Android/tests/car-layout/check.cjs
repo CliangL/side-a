@@ -72,11 +72,13 @@ async function carRun(browser,w,h){
     await page.locator('#carNow [data-act="toggle"]').click();
     assert.equal((await page.evaluate(()=>window.__qa.snapshot())).player.playing,false);
     await page.locator('#carNow [data-act="sound"]').click();
-    await page.waitForSelector('#sheet .sound-preset');
-    await page.locator('[data-act="soundPick"][data-arg="commute"]').click();
-    await page.waitForSelector('[data-act="soundPick"][data-arg="commute"][aria-pressed="true"]');
-    assert.equal((await page.evaluate(()=>window.__qa.snapshot())).settings.soundPreset,'commute');
-    await page.locator('#sheet [data-act="closeSheet"]').click();
+    await page.waitForSelector('#sheet .sound-option');
+    assert.equal(await page.locator('#sheet .sound-option').count(),7);
+    const soundBox=await page.locator('#sheet').boundingBox();assert(soundBox.width<=340,'Sound menu should stay compact');
+    assert.equal(await page.locator('#sheet .sound-grid').count(),0,'Large sound cards must be removed');
+    await page.locator('[data-act="soundPick"][data-arg="hall"]').click();
+    await page.waitForSelector('#shade[hidden]', {state: 'attached'});
+    assert.equal((await page.evaluate(()=>window.__qa.snapshot())).settings.soundPreset,'hall');
     await page.locator('#carNow [data-act="queue"]').click();
     await page.waitForSelector('#sheet .queueitem');
     await page.locator('#sheet [data-act="closeSheet"]').click();
@@ -135,7 +137,7 @@ async function phoneRun(browser){
     await page.waitForSelector('#player:not([hidden])');
     await page.locator('#player [data-act="sound"]').click();
     await page.locator('[data-act="soundPick"][data-arg="soft"]').click();
-    await page.waitForSelector('[data-act="soundPick"][data-arg="soft"][aria-pressed="true"]');
+    await page.waitForSelector('#shade[hidden]', {state: 'attached'});
     assert.deepEqual(errors,[]);
     return {phone:'passed'};
   }finally{await page.close();}
