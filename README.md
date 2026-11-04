@@ -1,6 +1,6 @@
 # Side A
 
-自用音乐播放器，当前客户端版本 **0.5.0**。包含 iPhone、Android 手机、安卓横屏车机客户端与统一曲库后台，采用毛玻璃界面、专辑封面和播放／歌词页。
+自用音乐播放器，当前 iPhone／Android 手机版 **0.5.0**，车机版 **0.5.1**。包含 iPhone、Android 手机、安卓横屏车机客户端与统一曲库后台，采用毛玻璃界面、专辑封面和播放／歌词页。
 
 ## 功能
 
@@ -11,7 +11,7 @@
 - 统一后台保存 QQ 音乐登录状态，私有发行包自动连接，每台设备独立授权。
 - 收藏、歌单、历史、偏好和播放设置自动备份；离线先存本地，联网后重试。
 - 三端场景音效：原声、人声、低音、舒缓、通勤、夜间；选择保存在本机并纳入设备备份。iOS 对解码后的 PCM 使用音频处理 tap，Android 使用当前播放器会话的 Equalizer，包含增益余量及不可用时的原声回退。夜间为柔和 EQ，不是响度压缩。
-- 独立安卓车机版：横屏、左侧导航、中间曲库、右侧常驻播放区，大按钮及简化层级。手机和车机使用不同应用标识与恢复身份。
+- 独立安卓车机版：横屏、左侧导航与歌曲封面 CD、全宽曲库和底部固定播放控制条。CD 随播放旋转，点击进入铺满内容区的同步歌词，左侧导航和底部播放控制始终保留；支持点击歌词定位。手机和车机使用不同应用标识与恢复身份。
 
 音源返回的曲目、音质及可播放范围取决于上游接口、账号权限和网络；不保证所有歌曲均可播放或都有无损版本。原唱排序使用可获得的信息，不能保证准确识别每首歌的原唱。音频由手机直接访问来源 CDN，后台处理搜索、授权与资料同步。
 
@@ -65,7 +65,7 @@ xcodebuild -project outputs/SideA/SideA.xcodeproj -scheme SideA \
 
 ```sh
 bash outputs/SideA-Android/build.sh outputs/SideA-0.5.0-Android.apk
-SIDEA_VARIANT=car bash outputs/SideA-Android/build.sh outputs/SideA-0.5.0-Car.apk
+SIDEA_VARIANT=car bash outputs/SideA-Android/build.sh outputs/SideA-0.5.1-Car.apk
 ```
 
 车机包适用于可直接安装 APK、Android 9 或更新版本的设备；使用 `app/src/car/AndroidManifest.xml`，横屏界面按 800×480、1024×600、1280×720 和 1920×720 验证。具体车机的系统栏、屏幕密度、WebView 和音频硬件仍需真机确认。这是独立车机 APK，尚未实现 Android Auto 投屏或 AAOS 系统媒体入口。
@@ -107,6 +107,16 @@ Android 来源标签回归：
 ```sh
 node outputs/SideA-Android/tests/source-label.test.cjs
 ```
+
+车机界面回归使用合成桥接与封面，不连接生产后台。在仓库根目录执行（可用 `CHROME_PATH` 指定本机 Chrome）：
+
+```sh
+npm install --prefix work/car-redesign playwright@1.64.1
+NODE_PATH="$PWD/work/car-redesign/node_modules" node outputs/SideA-Android/tests/car-layout/check.cjs
+NODE_PATH="$PWD/work/car-redesign/node_modules" node outputs/SideA-Android/tests/car-layout/edge-check.cjs
+```
+
+覆盖四种横屏尺寸、歌词页保留导航、底栏位置一致、封面旋转、切歌、歌词定位、音效入口和手机界面回归。结果写入忽略的 `work/car-redesign/`。
 
 场景参数及降级逻辑的纯 Java 测试：`bash outputs/SideA-Android/tests/sound/run.sh`。模拟器测试探针提供 `mode=sound` 验证实际均衡器和音频播放，`mode=identity` 验证手机／车机恢复身份隔离；构建车机探针时设置 `SIDEA_TEST_TARGET=studio.sidea.car`。测试安装包使用合成恢复种子，不注入私人安装授权。
 
