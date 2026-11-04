@@ -3,7 +3,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 SIDEA_STATE=/data
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && useradd --uid 12040 --no-create-home --shell /usr/sbin/nologin sidea && install -d -m 0700 -o sidea -g sidea /data
-COPY catalog.py qq_provider.py kuwo_provider.py device_library.py server.py ./
+COPY catalog.py qq_provider.py kuwo_provider.py device_library.py ai_bridge.py server.py ./
 COPY templates ./templates
 COPY static ./static
 USER sidea

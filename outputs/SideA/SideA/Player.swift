@@ -513,7 +513,7 @@ final class Player: ObservableObject {
     }
     private func recordSkip() {
         accumulate()
-        if started, let track { onEvent?(track,"skip",listened,duration) }
+        if started, !isLoading, errorMessage == nil, let track { onEvent?(track,"skip",listened,duration) }
     }
     private func completed() {
         accumulate()

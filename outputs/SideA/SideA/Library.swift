@@ -103,7 +103,7 @@ struct SavedLibrary: Codable, Equatable {
     @Published private(set) var playlists: [UserPlaylist]
     @Published private(set) var favorites: [Track]
     @Published private(set) var recent: [Track]
-    @Published var trackingEnabled: Bool { didSet { if oldValue != trackingEnabled { save() } } }
+    @Published var trackingEnabled: Bool { didSet { if oldValue != trackingEnabled { resetAI(); save() } } }
     @Published private(set) var storageError: String?
     @Published private var listening: [ListeningDay]
     @Published private var hidden: Set<String>
@@ -114,10 +114,21 @@ struct SavedLibrary: Codable, Equatable {
     private let file: URL
     var onPersist: (() -> Void)?
     private var applyingCloud = false
+    @Published private var aiCache: AIRecommendations.Cache?
+    private var aiRetryAfter = Date.distantPast
+    private var aiWork: Task<Void, Never>?
+    private var aiCandidates: [Track] = []
+    private var aiOwners = Set<String>()
+    private var aiProbeAfter = Date.distantPast
+    private var aiRevision: String?
+    private var aiPending: AIRecommendations.Pending?
+    private var aiGeneration = 0
     private(set) var needsCloudRecovery = true
 
     init(file: URL? = nil) {
         self.file = file ?? LocalStorage.directory(.applicationSupportDirectory, name: "SideA").appendingPathComponent("library.json")
+        aiCache = (try? Data(contentsOf: self.file.appendingPathExtension("ai"))).flatMap { try? JSONDecoder().decode(AIRecommendations.Cache.self, from: $0) }
+        aiPending = (try? Data(contentsOf: self.file.appendingPathExtension("ai-pending"))).flatMap { try? JSONDecoder().decode(AIRecommendations.Pending.self, from: $0) }
         var saved = SavedLibrary()
         var loadError: String?
         if FileManager.default.fileExists(atPath: self.file.path) {
@@ -280,6 +291,7 @@ struct SavedLibrary: Codable, Equatable {
         save()
     }
     func resetPreferences() {
+        resetAI()
         styleTask?.cancel()
         listening.removeAll(); hidden.removeAll(); sessionSkips.removeAll(); genres.removeAll(); mutedStyles.removeAll()
         save()
@@ -329,10 +341,10 @@ struct SavedLibrary: Codable, Equatable {
         return "沿着《\(seed.title)》继续发现"
     }
 
-    func recommendations(from candidates: [Track]) -> [Track] {
+    private func localRecommendations(from candidates: [Track], limit: Int = 24) -> [Track] {
         var seen = Set<String>()
         let unique = candidates.filter { seen.insert($0.id).inserted && !hidden.contains($0.id) }
-        guard trackingEnabled else { return Array(unique.prefix(24)) }
+        guard trackingEnabled else { return Array(unique.prefix(limit)) }
         let now = Date()
         let w = weights()
         var artist = [String: Double](), genre = [String: Double]()
@@ -362,6 +374,128 @@ struct SavedLibrary: Codable, Equatable {
             if counts[key, default: 0] < 2 { result.append(t) } else { extras.append(t) }
             counts[key, default: 0] += 1
         }
-        return Array((result + extras).prefix(24))
+        return Array((result + extras).prefix(limit))
     }
+    private func aiInput(from candidates: [Track]) -> AIRecommendations.Input {
+        AIRecommendations.input(saved: snapshot, candidates: aiAllowed(localRecommendations(from: candidates, limit: 60)))
+    }
+    func aiRequestKey(from candidates: [Track]) -> String {
+        guard trackingEnabled, let data = AIRecommendations.encoded(aiInput(from: candidates)) else { return "disabled" }
+        return AIRecommendations.hash(String(decoding: data, as: UTF8.self))
+    }
+    func recommendations(from candidates: [Track]) -> [Track] {
+        let local = localRecommendations(from: candidates, limit: 60)
+        guard trackingEnabled, let cache = aiCache, cache.expires > Date() else { return Array(local.prefix(24)) }
+        // Listening changes trigger a refresh, but do not discard useful previous
+        // analysis. Apply it only to currently allowed candidates; never revive a
+        // hidden song, muted style or a song just explicitly skipped.
+        return Array(AIRecommendations.reorder(aiAllowed(local), result: cache.result).prefix(24))
+    }
+    private func aiAllowed(_ candidates: [Track]) -> [Track] {
+        candidates.filter { track in
+            let labels = (genres[track.id] ?? track.genres).map { $0.lowercased() }
+            return mutedStyles.isDisjoint(with: labels) && !(sessionSkips[track.id].map { Date().timeIntervalSince($0) < 3600 } ?? false)
+        }
+    }
+    private func resetAI() {
+        aiGeneration += 1; aiWork?.cancel(); aiCache = nil; aiRetryAfter = .distantPast; aiProbeAfter = .distantPast
+        try? FileManager.default.removeItem(at: file.appendingPathExtension("ai"))
+        saveAIPending(nil)
+    }
+    private func saveAIPending(_ pending: AIRecommendations.Pending?) {
+        aiPending = pending
+        let location = file.appendingPathExtension("ai-pending")
+        guard let pending else { try? FileManager.default.removeItem(at: location); return }
+        if let data = try? JSONEncoder().encode(pending) {
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: location, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        }
+    }
+    private func receiveAI(_ job: AIRecommendations.TaskReply.Job, pending: AIRecommendations.Pending) {
+        guard job.id == pending.id else { return }
+        if job.status == "succeeded", let result = job.result {
+            let cache = AIRecommendations.Cache(fingerprint: pending.fingerprint, expires: Date().addingTimeInterval(21600), result: result, revision: pending.revision)
+            aiCache = cache
+            if let data = try? JSONEncoder().encode(cache) {
+                try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? data.write(to: file.appendingPathExtension("ai"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            }
+        }
+        if !["queued", "leased", "running"].contains(job.status) { saveAIPending(nil) }
+    }
+    func requestAI(from candidates: [Track]) {
+        aiCandidates = candidates
+        guard !aiOwners.isEmpty, aiWork == nil, Date() >= aiProbeAfter else { return }
+        aiWork = Task { [weak self] in
+            await self?.refreshAI()
+            self?.aiWork = nil
+        }
+    }
+    // One active phone/CarPlay owner is enough. Backgrounding both stops polling;
+    // returning starts a configuration-only probe even when the history is unchanged.
+    func observeAI(owner: String) async {
+        aiOwners.insert(owner); aiProbeAfter = .distantPast
+        defer {
+            aiOwners.remove(owner)
+            if aiOwners.isEmpty { aiWork?.cancel() }
+        }
+        while !Task.isCancelled {
+            requestAI(from: aiCandidates)
+            do { try await Task.sleep(for: .seconds(60)) } catch { return }
+        }
+    }
+    private func refreshAI() async {
+        guard trackingEnabled else { return }
+#if DEBUG
+        if LocalStorage.testID != nil { return }
+#endif
+        guard let server = try? CentralServer.read() else { return }
+        aiProbeAfter = Date().addingTimeInterval(60)
+        let generation = aiGeneration
+        let session = CentralServer.session()
+        defer { session.invalidateAndCancel() }
+        do {
+            let config = try await AIRecommendations.configuration(server: server, using: session)
+            try Task.checkCancellation()
+            guard try CentralServer.read() == server else { return }
+            if (aiRevision ?? aiCache?.revision ?? aiPending?.revision) != config.revision {
+                aiCache = nil
+                try? FileManager.default.removeItem(at: file.appendingPathExtension("ai"))
+                aiRetryAfter = .distantPast
+            }
+            aiRevision = config.revision
+            if let pending = aiPending, pending.expired || pending.revision != config.revision || !config.enabled {
+                guard await AIRecommendations.cancel(pending.id, server: server, using: session) else { return }
+                saveAIPending(nil)
+            }
+            guard !Task.isCancelled else { return }
+            if !config.enabled {
+                aiCache = nil
+                try? FileManager.default.removeItem(at: file.appendingPathExtension("ai"))
+                return
+            }
+            // Pending work is queried before the model cooldown. Resuming the app
+            // retrieves the same task even when a slow model finished in the background.
+            if let pending = aiPending {
+                let job = try await AIRecommendations.poll(pending.id, server: server, using: session)
+                guard !Task.isCancelled, trackingEnabled, generation == aiGeneration, try CentralServer.read() == server else { return }
+                receiveAI(job, pending: pending)
+                return
+            }
+            guard !aiCandidates.isEmpty else { return }
+            let input = aiInput(from: aiCandidates), fingerprint = aiRequestKey(from: aiCandidates)
+            guard !input.candidates.isEmpty, !input.profile.favorites.isEmpty || !input.profile.listening.isEmpty else { return }
+            if let cache = aiCache, cache.fingerprint == fingerprint, cache.expires > Date() { return }
+            guard Date() >= aiRetryAfter else { return }
+            aiRetryAfter = Date().addingTimeInterval(600)
+            let job = try await AIRecommendations.submit(input, server: server, using: session)
+            guard trackingEnabled, generation == aiGeneration, try CentralServer.read() == server else { return }
+            let pending = AIRecommendations.Pending(id: job.id, fingerprint: fingerprint, revision: config.revision, created: Date(), input: input)
+            saveAIPending(pending)
+            // Save the ID even if the scene just backgrounded; no more polling is
+            // performed until there is an active phone or CarPlay owner again.
+            if !Task.isCancelled { receiveAI(job, pending: pending) }
+        } catch { /* Ordinary recommendations remain usable while the hub is unavailable. */ }
+    }
+
 }

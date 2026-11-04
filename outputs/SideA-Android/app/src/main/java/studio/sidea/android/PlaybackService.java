@@ -449,7 +449,7 @@ public final class PlaybackService extends Service {
         } catch(IllegalStateException ignored) {}
     }
     private void recordSkip() {
-        updatePosition(); if(started && current()!=null) Library.record(this,current(),"skip",listened,duration);
+        updatePosition(); if(started && !loading && error.isEmpty() && current()!=null) Library.record(this,current(),"skip",listened,duration);
     }
     private final Runnable ticker=new Runnable(){public void run(){
         if(destroyed) return;

@@ -1,0 +1,39 @@
+[Unit]
+Description=Side A isolated OECT AI node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sidea-ai-worker
+Group=sidea-ai-worker
+EnvironmentFile=/etc/sidea-ai-worker/worker.env
+Environment=HOME=/var/lib/sidea-ai-worker
+Environment=HERMES_HOME=/var/lib/sidea-ai-worker/hermes
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/var/lib/sidea-ai-worker
+ExecStart=/usr/bin/python3 /opt/sidea-ai-worker/oect_worker.py
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=20
+StateDirectory=sidea-ai-worker
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sidea-ai-worker
+InaccessiblePaths=/root
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryMax=1280M
+TasksMax=96
+
+[Install]
+WantedBy=multi-user.target

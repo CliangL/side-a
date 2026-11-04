@@ -1,12 +1,12 @@
 # Side A
 
-自用音乐播放器，当前 iPhone、Android 手机版 **0.6.0**，车机版 **0.6.1**。包含 iPhone、Android 手机、安卓横屏车机客户端与统一曲库后台，采用毛玻璃界面、专辑封面和播放／歌词页。
+自用音乐播放器，当前 iPhone、Android 手机与车机版 **0.7.2**。包含 iPhone、Android 手机、安卓横屏车机客户端与统一曲库后台，采用毛玻璃界面、专辑封面和播放／歌词页。
 
 ## 功能
 
 - 聚合搜索，以及「全部、QQ 音乐、网易云、酷我音乐、JOOX」分栏；结合歌名、歌手及版本信息排序。
 - App 内播放、歌词、播放队列、收藏、自建歌单、最近播放和音质选择。
-- 热歌、新歌与基于收藏、重听、听完、快速跳过等行为的个性推荐。当前推荐由规则与音乐元数据驱动，未接入大语言模型。
+- 热歌、新歌与基于收藏、重听、听完、快速跳过等行为的个性推荐。接入独立 AI Hub 后，由所分配的模型分析有界行为摘要、对真实候选歌曲排序；模型未配置或不可用时保留本地规则推荐，播放不等待 AI。
 - 封面、歌词等缓存及清理入口；应用不设固定磁盘缓存配额。流媒体播放缓冲不等同于完整歌曲离线下载。
 - 统一后台保存 QQ 音乐登录状态，私有发行包自动连接，每台设备独立授权。
 - 收藏、歌单、历史、偏好和播放设置自动备份；离线先存本地，联网后重试。
@@ -22,7 +22,8 @@
 | `outputs/SideA/` | SwiftUI、AVFoundation iPhone 工程及 XCTest |
 | `outputs/SideA-Android/` | Java 原生播放服务、WebView 界面、构建脚本及测试 |
 | `outputs/SideA-Server/` | Flask、SQLite 统一后台，QQ／酷我适配器及受控回归测试 |
-| `outputs/安装 Side A 0.6.0 到 iPhone.command` | 配合已签名 IPA 使用的 Mac 安装工具 |
+| `outputs/AI-Hub/` | 统一 AI 管理台、PostgreSQL 任务队列、LiteLLM 接口及 OECT Hermes 节点 |
+| `outputs/安装 Side A 0.7.2 到 iPhone.command` | 配合已签名 IPA 使用的 Mac 安装工具 |
 
 仓库仅保存源码、文档和必要工具。私有安装包、签名材料、安装授权、设备恢复种子、个人数据及临时构建目录不提交 Git。
 
@@ -64,8 +65,8 @@ xcodebuild -project outputs/SideA/SideA.xcodeproj -scheme SideA \
 使用统一后台时，将 `CentralCatalog.java` 中的 `PERSONAL_BASE` 配置为自己的 HTTPS 地址。`SIDEA_SETUP_FILE` 与 `SIDEA_RECOVERY_FILE` 在构建时注入 APK；恢复种子应独立保管，并在后续版本中保持不变。
 
 ```sh
-bash outputs/SideA-Android/build.sh outputs/SideA-0.6.0-Android.apk
-SIDEA_VARIANT=car bash outputs/SideA-Android/build.sh outputs/SideA-0.6.1-Car.apk
+bash outputs/SideA-Android/build.sh outputs/SideA-0.7.2-Android.apk
+SIDEA_VARIANT=car bash outputs/SideA-Android/build.sh outputs/SideA-0.7.2-Car.apk
 ```
 
 车机包适用于可直接安装 APK、Android 9 或更新版本的设备；使用 `app/src/car/AndroidManifest.xml`，横屏界面按 800×480、1024×600、1280×720 和 1920×720 验证。具体车机的系统栏、屏幕密度、WebView 和音频硬件仍需真机确认。这是独立车机 APK，尚未实现 Android Auto 投屏或 AAOS 系统媒体入口。
@@ -83,6 +84,16 @@ SIDEA_PUBLIC_BASE=https://music.example.com docker compose up -d --build
 
 为该域名配置受手机信任的 HTTPS 反向代理，转发到 `127.0.0.1:18760`。后台使用单进程运行，以保留扫码登录的会话状态。后台账号、QQ 登录数据和每台设备的资料保存在私有服务数据目录中。
 
+## 统一 AI 控制台
+
+独立 [AI Hub](outputs/AI-Hub/README.md) 支持添加兼容 OpenAI 的接口、管理模型、查看调用状态，并按软件分配模型与额度。支持 Chat Completions 与 Responses；使用真实接口测试，不根据模型名称假定兼容。配置或更换模型不需要重打客户端。
+
+Side A 服务端使用单独应用密钥连接 Hub，再依据已认证的设备恢复资料确定独立身份。客户端只上传最近 30 天的有界行为汇总与至多 60 首真实候选的元数据，AI 结果必须引用候选 ID。推荐缓存 6 小时，配置探测只在前台进行，不为每次播放发送模型请求。暂停、缓冲和播放失败不会作为快速跳过的负反馈。
+
+腾讯云运行管理台、任务队列及普通模型调用；OECT 的独立 Hermes 节点通过出站 HTTPS 领取明确分配的任务，不需要家庭入站 80/443。节点使用每任务短期模型凭据，当前仅开放单轮文本分析，禁用个人记忆及工具。普通歌曲推荐不依赖家庭设备在线。
+
+真实 AI 需要管理员配置有效服务商 API Key、模型和计费方式，并分配给软件；按量接口还需填写单价，已有订阅／固定费用模式只统计用量。源码不包含模型密钥或预置的免费模型；受控回归使用测试桩，不能替代真实接口验证。
+
 ## 测试
 
 后台受控回归不需要真实 QQ 登录，使用临时目录和合成资料：
@@ -91,7 +102,7 @@ SIDEA_PUBLIC_BASE=https://music.example.com docker compose up -d --build
 python3.12 -m venv work/server-venv
 work/server-venv/bin/pip install -r outputs/SideA-Server/requirements.txt
 (cd outputs/SideA-Server && ../../work/server-venv/bin/python -m unittest -v \
-  test_server test_qq_provider test_kuwo_provider test_device_library)
+  test_server test_qq_provider test_kuwo_provider test_device_library test_ai_bridge)
 ```
 
 iOS 单元测试及搜索／设置界面测试（将模拟器 ID 替换为本机可用设备）：

@@ -42,6 +42,7 @@ public final class MainActivity extends Activity {
     private final Runnable tick=new Runnable(){ public void run(){
         if(!active||destroyed)return;
         if(ready)try{
+            AIRecommendations.refreshIfDue(MainActivity.this);
             JSONObject state=PlaybackService.state(MainActivity.this);
             String raw=state.toString();
             if(!raw.equals(lastPlayer)){lastPlayer=raw;send("sideAPlayer",raw);}
@@ -189,6 +190,7 @@ public final class MainActivity extends Activity {
     @Override public void onBackPressed(){back();}
     @Override protected void onResume(){
         super.onResume();active=true;main.removeCallbacks(tick);main.post(tick);
+        AIRecommendations.setActive(this,true,()->main.post(()->send("sideARecommendations","")));
         CloudLibrary.start(getApplicationContext());
         network.execute(()->{
             if(CentralCatalog.enrollIfNeeded(getApplicationContext())){
@@ -197,9 +199,9 @@ public final class MainActivity extends Activity {
             }
         });
     }
-    @Override protected void onPause(){active=false;main.removeCallbacks(tick);super.onPause();}
+    @Override protected void onPause(){AIRecommendations.setActive(this,false,null);active=false;main.removeCallbacks(tick);super.onPause();}
     @Override protected void onDestroy(){
-        destroyed=true;main.removeCallbacks(tick);main.removeCallbacks(startupTimeout);
+        destroyed=true;AIRecommendations.setActive(this,false,null);main.removeCallbacks(tick);main.removeCallbacks(startupTimeout);
         network.shutdownNow();artwork.shutdownNow();actions.shutdown();
         disposeWeb(web);super.onDestroy();
     }
@@ -218,7 +220,7 @@ public final class MainActivity extends Activity {
         addUnique(tracks,rows(catalog.starters()));
         JSONObject charts=catalog.discovery(false,false);
         addUnique(tracks,rows(array(charts,"newReleases")));addUnique(tracks,rows(array(charts,"hot")));
-        return Library.recommend(this,tracks);
+        return AIRecommendations.ranked(this,Library.recommend(this,tracks,60));
     }
     private JSONObject settings(JSONObject args){
         SharedPreferences prefs=getSharedPreferences("sidea.settings",MODE_PRIVATE);
@@ -250,7 +252,11 @@ public final class MainActivity extends Activity {
             case "sound":return PlaybackService.commandAndState(this,"sound",args.toString());
             case "player":return PlaybackService.state(this);
             case "library":return Library.snapshot(this);
-            case "libraryAction":return Library.action(this,args);
+            case "libraryAction":{
+                JSONObject result=Library.action(this,args);
+                if(Arrays.asList("tracking","reset").contains(text(args,"op")))AIRecommendations.reset(this);
+                return result;
+            }
             case "settings":return settings(args);
             case "prepareSearch":{
                 CentralCatalog.enrollIfNeeded(getApplicationContext());

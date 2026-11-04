@@ -18,6 +18,7 @@ from werkzeug.exceptions import HTTPException
 
 import catalog
 import device_library
+import ai_bridge
 from qq_provider import QQProvider, ProviderError
 
 def digest(value):
@@ -343,6 +344,7 @@ def make_app(directory=None, qq=None):
         return row['id']
 
     device_library.register_routes(app,sql,device_auth)
+    ai_bridge.register_routes(app,sql,device_auth)
 
     @app.get('/v1/music')
     def music():

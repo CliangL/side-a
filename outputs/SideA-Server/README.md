@@ -50,3 +50,42 @@ docker compose exec controller cat /data/admin-password
 ## 验证
 
 `GET /health` 提供健康状态。设备用 `POST /v1/pair` 或私有发行包自动配对，之后仅向同一后台的音乐及资料接口发送设备授权令牌。音源或封面 CDN 不接收设备令牌。安装依赖后，在此目录执行 `python -m unittest -v test_server test_qq_provider test_kuwo_provider test_device_library` 可以运行受控回归，测试只使用临时目录和合成资料。
+
+## Unified AI recommendations (0.7.2)
+
+The optional AI Hub connection uses `SIDEA_AI_HUB_URL` and a server-only
+`SIDEA_AI_HUB_KEY` issued for the Side A application. HTTPS is required except
+for a loopback URL on the same host. Neither value is supplied by a phone, and
+the Hub credential must never be placed in an APK, IPA, Git history or browser.
+
+`POST /v1/ai/recommend` accepts a bounded preference summary and up to 60 real
+catalog candidates; `GET /v1/ai/tasks/<id>` polls the result. Both use the existing
+device bearer token. The bridge derives the subject from the active, nonrevoked
+library recovery profile, so reinstalling preserves identity without allowing
+one device to read another device's task. Clients cannot specify a subject.
+
+The 0.7.2 clients summarize favorites and the last 30 days of intentional plays,
+repeats, completions and quick skips. Pauses, buffering and playback failures are
+not negative signals. No audio, playback URL, provider credential, event timestamp
+or full listening history is sent. Track IDs are SHA-256 hashes with a mapping
+kept only on the device. Models rank known candidates; unknown or duplicate IDs
+are ignored, and all playback continues through the existing native player.
+
+Recommendations first display immediately from local rules. AI runs separately,
+returns at most 24 selections, and keeps validated ranking IDs for six hours with a
+minimum ten-minute model retry interval. Active clients probe configuration at most once per minute without invoking a model, so changing the central assignment invalidates old rankings automatically. Ordinary listening changes keep the last analysis while the next one is prepared; hidden songs, muted styles and recent intentional skips remain excluded. Background clients stop polling. UTF-8 request size is bounded by trimming excess candidates before dispatch. Disabling preference tracking disables AI
+recommendations as well. An unconfigured model, unavailable Hub, exhausted
+budget or network outage silently retains local recommendations; no fake AI
+success is returned and music playback is unaffected. App model assignments and
+credentials are maintained in the Hub, not in the player settings.
+
+Synthetic regression checks: `python -m unittest test_ai_bridge` (from this
+folder). Supply model details in the Hub admin and perform a real test before
+claiming the deployment has live model connectivity.
+
+Slow or queued AI jobs are saved by task ID with their submitted summary and
+configuration revision. Foreground clients poll the existing task independently
+of the ten-minute generation cooldown; app restarts and background/resume do not
+submit another model request. A configuration change invalidates old pending work;
+unfinished jobs older than six hours are cancelled before the client forgets them.
+`POST /v1/ai/tasks/<id>/cancel` uses the same server-derived subject isolation.

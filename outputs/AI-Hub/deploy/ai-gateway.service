@@ -1,0 +1,31 @@
+[Unit]
+Description=Private LiteLLM model gateway
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=ai-gateway
+Group=ai-gateway
+WorkingDirectory=/var/lib/ai-gateway
+EnvironmentFile=/etc/ai-gateway/service.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=LITELLM_LOCAL_MODEL_COST_MAP=True
+Environment=DISABLE_ADMIN_UI=True
+Environment=PATH=/opt/ai-gateway/runtime/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/ai-gateway/runtime/bin/litellm --config /etc/ai-gateway/config.yaml --host 127.0.0.1 --port 4000 --num_workers 1
+Restart=on-failure
+RestartSec=5
+StateDirectory=ai-gateway
+StateDirectoryMode=0700
+UMask=0077
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryMax=1500M
+
+[Install]
+WantedBy=multi-user.target

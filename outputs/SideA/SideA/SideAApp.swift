@@ -78,6 +78,9 @@ private struct SideAPhoneView: View {
                     background.finish()
                 }
             }
+            .task(id: scenePhase) {
+                if scenePhase == .active { await library.observeAI(owner: "phone") }
+            }
             .task(id: library.seedTracks.first?.id) {
                 if let track = library.seedTracks.first { library.learnStyle(of: track, from: session.discovery) }
             }

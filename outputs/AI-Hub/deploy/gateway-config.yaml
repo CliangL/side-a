@@ -1,0 +1,12 @@
+model_list: []
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  store_model_in_db: true
+  background_health_checks: false
+router_settings:
+  num_retries: 0
+litellm_settings:
+  num_retries: 0
+  set_verbose: false
+  turn_off_message_logging: true
+  request_timeout: 65

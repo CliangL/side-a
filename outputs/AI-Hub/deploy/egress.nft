@@ -1,0 +1,20 @@
+# Only the two dedicated AI service users are affected. Existing host rules are retained.
+table inet ai_hub_private_egress {
+    chain guarded {
+        ct state established,related return
+        # Prisma's private query engine binds an OS-assigned loopback port.
+        # Keep this exception scoped to the gateway user and the host's ephemeral range.
+        meta skuid "ai-gateway" ip daddr 127.0.0.1 tcp dport 32768-60999 return
+        meta skuid "ai-gateway" ip6 daddr ::1 tcp dport 32768-60999 return
+        ip daddr 127.0.0.0/8 udp dport 53 return
+        ip daddr 127.0.0.0/8 tcp dport { 53, 5432, 4000 } return
+        ip6 daddr ::1 udp dport 53 return
+        ip6 daddr ::1 tcp dport { 53, 5432, 4000 } return
+        ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4 } reject
+        ip6 daddr { ::/128, ::1/128, fc00::/7, fe80::/10, ff00::/8 } reject
+    }
+    chain output {
+        type filter hook output priority filter; policy accept;
+        meta skuid { "ai-hub", "ai-gateway" } jump guarded
+    }
+}

@@ -78,6 +78,7 @@ struct CollectionView: View {
         if route == .mix(0) { return library.seedTracks.first }
         return nil
     }
+    private var aiCandidates: [Track] { related + Track.starterTracks + discovery.newReleases + discovery.hot }
     private var tracks: [Track] {
         switch route {
         case .playlist: list?.tracks ?? []
@@ -85,7 +86,7 @@ struct CollectionView: View {
         case .recent: library.recent
         case .mix(1): discovery.hot
         case .mix(2): discovery.newReleases
-        case .mix: library.recommendations(from: related + Track.starterTracks + discovery.newReleases + discovery.hot)
+        case .mix: library.recommendations(from: aiCandidates)
         case .related: related
         default: []
         }
@@ -162,6 +163,7 @@ struct CollectionView: View {
                     }
                 }
             }
+            .task(id: library.aiRequestKey(from: aiCandidates)) { if route == .mix(0) { library.requestAI(from: aiCandidates) } }
             .task(id: seed?.id) { if let seed { await loadRelated(seed) } }
             .refreshable { if isExternalMix { await discovery.refresh(force: true) }; if let seed { await loadRelated(seed) } }
             .sheet(isPresented: $isAddingSongs) { if let list { SearchView(target: list.id) } }

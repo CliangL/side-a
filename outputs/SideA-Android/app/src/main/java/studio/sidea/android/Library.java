@@ -212,7 +212,44 @@ final class Library {
         }
         list(d,"playlists",plays);save(ctx);return snapshot(ctx);
     }
+    static synchronized JSONArray aiAllowed(Context ctx,JSONArray candidates){
+        JSONObject d=data(ctx),muted=map(d,"muted"),genres=map(d,"genres"),hidden=map(d,"hidden");
+        JSONArray allowed=new JSONArray();
+        for(JSONObject t:rows(candidates)){
+            String key=id(t);if(hidden.optBoolean(key)||System.currentTimeMillis()-skips.getOrDefault(key,0L)<3600000)continue;
+            JSONArray tags=genres.optJSONArray(key);if(tags==null)tags=array(t,"genres");boolean blocked=false;
+            for(int j=0;j<tags.length();j++)blocked|=muted.optBoolean(tags.optString(j).toLowerCase(Locale.ROOT));
+            if(!blocked)allowed.put(t);
+        }
+        return allowed;
+    }
+    static synchronized JSONObject aiProfile(Context ctx){
+        JSONObject d=data(ctx);if(!d.optBoolean("trackingEnabled",true))return null;
+        JSONArray favorites=new JSONArray(),listening=new JSONArray(),muted=new JSONArray();
+        for(JSONObject t:list(d,"favorites")){if(favorites.length()>=10)break;favorites.put(aiSignal(t));}
+        LinkedHashMap<String,JSONObject> signals=new LinkedHashMap<>();
+        List<JSONObject> history=list(d,"history");Collections.reverse(history);long cutoff=LocalDate.now().toEpochDay()-30;
+        for(JSONObject h:history){
+            JSONObject track=h.optJSONObject("track");if(track==null||h.optLong("day")<cutoff)continue;
+            String identity=id(track);JSONObject signal=signals.get(identity);
+            if(signal==null){signal=aiSignal(track);signals.put(identity,signal);}
+            for(String[] pair:new String[][]{{"choices","choices"},{"replays","replays"},{"completions","complete"},{"quick_skips","skips"}})
+                put(signal,pair[0],signal.optInt(pair[0])+h.optInt(pair[1]));
+        }
+        for(JSONObject signal:signals.values()){if(listening.length()>=12)break;listening.put(signal);}
+        JSONObject styles=map(d,"muted");List<String> keys=new ArrayList<>();styles.keys().forEachRemaining(keys::add);Collections.sort(keys);
+        for(String k:keys){if(muted.length()>=12)break;if(styles.optBoolean(k))muted.put(AIRecommendations.clipped(k,30));}
+        if(favorites.length()==0&&listening.length()==0)return null;
+        return object("favorites",favorites,"listening",listening,"muted_styles",muted);
+    }
+    private static JSONObject aiSignal(JSONObject track){
+        return object("title",AIRecommendations.clipped(text(track,"title"),60),"artist",AIRecommendations.clipped(text(track,"artist"),60),
+                "choices",0,"replays",0,"completions",0,"quick_skips",0);
+    }
     static synchronized JSONArray recommend(Context ctx,List<JSONObject> candidates){
+        return recommend(ctx,candidates,24);
+    }
+    static synchronized JSONArray recommend(Context ctx,List<JSONObject> candidates,int limit){
         JSONObject d=data(ctx);
         Map<String,Double> w=weights(d),artist=new HashMap<>(),genre=new HashMap<>(),scores=new HashMap<>();
         JSONObject tagMap=map(d,"genres"),hidden=map(d,"hidden"),muted=map(d,"muted");
@@ -223,7 +260,7 @@ final class Library {
             for(int i=0;i<tags.length();i++)genre.merge(tags.optString(i).toLowerCase(Locale.ROOT),value,Double::sum);
         }
         List<JSONObject> songs=new ArrayList<>();addUnique(songs,candidates);songs.removeIf(t->hidden.optBoolean(id(t)));
-        if(!d.optBoolean("trackingEnabled",true))return new JSONArray(songs.subList(0,Math.min(24,songs.size())));
+        if(!d.optBoolean("trackingEnabled",true))return new JSONArray(songs.subList(0,Math.min(limit,songs.size())));
         Set<String> recent=new HashSet<>();for(JSONObject t:list(d,"recent")){recent.add(id(t));if(recent.size()>=8)break;}
         for(int i=0;i<songs.size();i++){
             JSONObject t=songs.get(i);String key=id(t);JSONArray tags=tagMap.optJSONArray(key);if(tags==null)tags=array(t,"genres");
@@ -238,6 +275,6 @@ final class Library {
         Map<String,Integer> counts=new HashMap<>();List<JSONObject> first=new ArrayList<>(),extras=new ArrayList<>();
         for(JSONObject t:songs){String k=text(t,"artist").toLowerCase(Locale.ROOT);int n=counts.getOrDefault(k,0);
             (n<2?first:extras).add(t);counts.put(k,n+1);}
-        first.addAll(extras);return new JSONArray(first.subList(0,Math.min(24,first.size())));
+        first.addAll(extras);return new JSONArray(first.subList(0,Math.min(limit,first.size())));
     }
 }

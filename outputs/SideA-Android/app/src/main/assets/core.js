@@ -345,6 +345,7 @@ function scheduleRecommendations() {
   clearTimeout(recTimer);
   recTimer = setTimeout(refreshRecommendation, 180);
 }
+window.sideARecommendations = scheduleRecommendations;
 async function refreshRecommendation() {
   const token = ++recToken;
   try {

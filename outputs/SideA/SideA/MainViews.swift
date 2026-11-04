@@ -75,9 +75,8 @@ private struct HomeView: View {
     @State private var batch = 0
     @State private var neighbors: [Track] = []
     private var seed: Track? { library.seedTracks.first }
-    private var personal: [Track] {
-        library.recommendations(from: neighbors + Track.starterTracks + discovery.newReleases + discovery.hot)
-    }
+    private var candidates: [Track] { neighbors + Track.starterTracks + discovery.newReleases + discovery.hot }
+    private var personal: [Track] { library.recommendations(from: candidates) }
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
@@ -128,6 +127,7 @@ private struct HomeView: View {
                 }.padding(.top, 5).padding(.bottom, 18)
             }.refreshable { await discovery.refresh(force: true) }.background { Paper() }
         }
+        .task(id: library.aiRequestKey(from: candidates)) { library.requestAI(from: candidates) }
         .task(id: seed?.id) {
             neighbors = []
             if let seed { let result = await discovery.related(to: seed); if !Task.isCancelled { neighbors = result } }

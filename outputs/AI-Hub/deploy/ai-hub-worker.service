@@ -1,0 +1,28 @@
+[Unit]
+Description=Private AI model task worker
+After=network-online.target postgresql.service ai-gateway.service
+Wants=network-online.target
+
+[Service]
+User=ai-hub
+Group=ai-hub
+WorkingDirectory=/opt/ai-hub/current
+EnvironmentFile=/etc/ai-hub/service.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/ai-hub/runtime/bin/python worker.py
+Restart=on-failure
+RestartSec=4
+StateDirectory=ai-hub
+StateDirectoryMode=0700
+UMask=0077
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryMax=350M
+
+[Install]
+WantedBy=multi-user.target

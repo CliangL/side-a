@@ -4,8 +4,8 @@ set -euo pipefail
 src="$(cd "$(dirname "$0")" && pwd)/app/src/main"
 variant="${SIDEA_VARIANT:-phone}"
 case "$variant" in
-    phone) manifest="$src/AndroidManifest.xml"; default_output="SideA-0.6.0-Android.apk" ;;
-    car) manifest="$src/../car/AndroidManifest.xml"; default_output="SideA-0.6.1-Car.apk" ;;
+    phone) manifest="$src/AndroidManifest.xml"; default_output="SideA-0.7.2-Android.apk" ;;
+    car) manifest="$src/../car/AndroidManifest.xml"; default_output="SideA-0.7.2-Car.apk" ;;
     *) printf 'SIDEA_VARIANT must be phone or car.\n' >&2; exit 1 ;;
 esac
 : "${ANDROID_SDK_ROOT:?Set ANDROID_SDK_ROOT to the Android SDK directory}"

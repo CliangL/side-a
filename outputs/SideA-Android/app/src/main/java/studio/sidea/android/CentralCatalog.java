@@ -214,5 +214,30 @@ final class CentralCatalog {
             }
         }finally{request.disconnect();}
     }
+    private static final class AIUnavailable extends IOException {
+        final int status;
+        AIUnavailable(int status){super("AI unavailable");this.status=status;}
+    }
+    static boolean cancelAI(Context ctx,String id){
+        if(!id.matches("[A-Za-z0-9_-]{1,80}"))return true;
+        try{ai(ctx,"POST","/v1/ai/tasks/"+id+"/cancel",new JSONObject());return true;}
+        catch(AIUnavailable missing){return missing.status==404;}
+        catch(Exception unavailable){return false;}
+    }
+    static JSONObject ai(Context ctx,String method,String path,JSONObject body)throws Exception {
+        SharedPreferences prefs=ctx.getSharedPreferences("sidea.settings",Context.MODE_PRIVATE);
+        if(!PERSONAL_BASE.equals(base(prefs))||!path.matches("/v1/ai/(?:config|recommend|tasks/[A-Za-z0-9_-]{1,80}(?:/cancel)?)"))throw new IOException("AI not connected");
+        HttpsURLConnection request=connection(base(prefs)+path);
+        try{
+            request.setRequestMethod(method);request.setRequestProperty("Authorization","Bearer "+token(prefs));
+            if(body!=null){
+                byte[] payload=body.toString().getBytes(StandardCharsets.UTF_8);
+                request.setDoOutput(true);request.setRequestProperty("Content-Type","application/json");request.setFixedLengthStreamingMode(payload.length);
+                try(OutputStream out=request.getOutputStream()){out.write(payload);}
+            }
+            int status=request.getResponseCode();if(status!=200)throw new AIUnavailable(status);
+            try(InputStream input=request.getInputStream()){return new JSONObject(new String(Catalog.read(input,65536),StandardCharsets.UTF_8));}
+        }finally{request.disconnect();}
+    }
     private CentralCatalog() {}
 }

@@ -1,0 +1,28 @@
+[Unit]
+Description=Private AI control panel and application API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=ai-hub
+Group=ai-hub
+WorkingDirectory=/opt/ai-hub/current
+EnvironmentFile=/etc/ai-hub/service.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/ai-hub/runtime/bin/gunicorn --bind 127.0.0.1:8780 --workers 2 --threads 4 --timeout 150 --error-logfile - app:app
+Restart=on-failure
+RestartSec=4
+StateDirectory=ai-hub
+StateDirectoryMode=0700
+UMask=0077
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryMax=600M
+
+[Install]
+WantedBy=multi-user.target

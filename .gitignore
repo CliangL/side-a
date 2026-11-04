@@ -20,7 +20,8 @@ SideARecoverySeed.txt
 !/outputs/SideA/
 !/outputs/SideA-Android/
 !/outputs/SideA-Server/
-!/outputs/安装 Side A 0.6.0 到 iPhone.command
+!/outputs/AI-Hub/
+!/outputs/安装 Side A 0.7.2 到 iPhone.command
 *.ipa
 *.apk
 *.aab
@@ -29,6 +30,7 @@ SideARecoverySeed.txt
 # Generated files and local runtime data.
 .DS_Store
 __pycache__/
+.pytest_cache/
 *.py[cod]
 .venv/
 venv/

@@ -16,6 +16,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     private var subscriptions = Set<AnyCancellable>()
     private var refreshTask: Task<Void, Never>?
     private var similarTask: Task<Void, Never>?
+    private var aiFingerprint: String?
     private var seedID: String?
     private var neighbors: [Track] = []
 
@@ -27,6 +28,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         refreshTask = Task { [weak self] in
             await self?.session.cloud.flush()
             await self?.session.discovery.refresh()
+            await self?.session.library.observeAI(owner: "carplay")
         }
     }
 
@@ -46,6 +48,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         subscriptions.removeAll()
         refreshTask?.cancel()
         similarTask?.cancel()
+        aiFingerprint = nil
         neighbors.removeAll()
         seedID = nil
         CPNowPlayingTemplate.shared.updateNowPlayingButtons([])
@@ -95,6 +98,12 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             }
         }
         updateFavoriteButton()
+        let candidates = neighbors + Track.starterTracks + session.discovery.newReleases + session.discovery.hot
+        let fingerprint = session.library.aiRequestKey(from: candidates)
+        if fingerprint != aiFingerprint {
+            aiFingerprint = fingerprint
+            session.library.requestAI(from: candidates)
+        }
     }
 
     func makeList(_ page: Page, title: String) -> CPListTemplate {

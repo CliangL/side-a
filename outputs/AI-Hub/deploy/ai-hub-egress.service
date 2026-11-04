@@ -1,0 +1,14 @@
+[Unit]
+Description=Private destination guard for AI model requests
+Before=ai-hub.service ai-hub-worker.service ai-gateway.service
+After=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/sbin/nft delete table inet ai_hub_private_egress
+ExecStart=/usr/sbin/nft -f /etc/ai-hub/egress.nft
+ExecStop=-/usr/sbin/nft delete table inet ai_hub_private_egress
+
+[Install]
+WantedBy=multi-user.target

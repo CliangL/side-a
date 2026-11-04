@@ -3,6 +3,8 @@ services:
     build: .
     environment:
       SIDEA_PUBLIC_BASE: "${SIDEA_PUBLIC_BASE:-}"
+      SIDEA_AI_HUB_URL: "${SIDEA_AI_HUB_URL:-}"
+      SIDEA_AI_HUB_KEY: "${SIDEA_AI_HUB_KEY:-}"
     restart: unless-stopped
     ports:
       - "127.0.0.1:18760:8799"
