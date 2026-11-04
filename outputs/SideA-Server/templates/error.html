@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}请求未完成{% endblock %}
+{% block content %}
+<section class="panel entrance">
+    <p class="eyebrow">SIDE A / REQUEST</p>
+    <h1>请求未完成</h1>
+    <p class="intro">{{ message }}</p>
+    <a class="btn" href="{{ url_for('home') }}">返回后台</a>
+</section>
+{% endblock %}

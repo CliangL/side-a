@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="theme-color" content="#f7f6ef" />
+    <title>Side A · 私人唱片室</title>
+    <link rel="stylesheet" href="style.css" />
+    <script defer src="core.js"></script>
+    <script defer src="pages.js"></script>
+    <script defer src="playing.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <div id="shell">
+      <main id="main" tabindex="-1"></main>
+      <footer id="dock">
+        <div id="mini"></div>
+        <nav id="tabs"></nav>
+      </footer>
+    </div>
+    <section id="player" aria-label="正在播放" hidden></section>
+    <div id="shade" hidden>
+      <section id="sheet" role="dialog" aria-modal="true" aria-label="选项"></section>
+    </div>
+    <div id="notice" role="status"></div>
+  </body>
+</html>

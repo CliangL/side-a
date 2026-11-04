@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block script %}<script defer src="{{ url_for('static',filename='admin.js') }}"></script>{% endblock %}
+{% block mast %}
+<span class="muted">管理员</span>
+<form method="post" action="{{ url_for('logout') }}">{{ protection() }}<button class="quiet" type="submit">退出</button></form>
+{% endblock %}
+{% block content %}
+<div class="hero">
+    <div><p class="eyebrow">SIDE A / CONTROL ROOM</p><h1>统一后台</h1><p class="intro">管理你的音源和设备。手机会在下次搜索时读取最新曲库。</p></div>
+    <div class="revision"><span>曲库版本</span><strong>{{ revision }}</strong></div>
+</div>
+<div class="grid">
+    <section id="account" class="panel account">
+        <div class="heading">
+            <div><p class="eyebrow">01 / ACCOUNT</p><h2>QQ 音乐账号</h2></div>
+            <span id="qq-badge" class="pill {{ 'on' if qq.connected else '' }}">{{ '已连接' if qq.connected else '未连接' }}</span>
+        </div>
+        <p id="qq-summary" class="desc">{{ qq.message }}</p>
+        <form id="qq-login" method="post" action="{{ url_for('qq_login') }}" data-status="{{ url_for('qq_status',attempt='ATTEMPT_ID') }}">
+            {{ protection() }}
+            <button id="qr-start" class="primary" name="method" value="qq" type="submit">用手机 QQ 扫码</button>
+            <button name="method" value="mobile" type="submit">用 QQ 音乐扫码</button>
+        </form>
+        <div id="qr-pane" class="qr-pane" hidden>
+            <img id="qr-image" alt="登录二维码" width="184" height="184" hidden>
+            <p id="qr-message" role="status" aria-live="polite"></p>
+        </div>
+        <noscript><p class="hint">扫码及状态更新需要浏览器启用 JavaScript。</p></noscript>
+        <form id="qq-unlink" method="post" action="{{ url_for('unlink') }}" data-confirm="断开后台 QQ 账号？已配对的设备将无法继续使用该账号的播放权益。">
+            {{ protection() }}<button class="quiet warning" type="submit">解除 QQ 绑定</button>
+        </form>
+        <p class="hint"><span class="dot"></span>设备使用自己的配对凭证，歌曲和音质取决于 QQ 音乐返回的账号权限。</p>
+    </section>
+    <section id="pair" class="panel">
+        <div class="heading"><div><p class="eyebrow">02 / PAIRING</p><h2>配对新设备</h2></div></div>
+        {% if private_builds %}
+        <p class="desc">自用版 Side A 首次打开会自动连接。已连接设备可在下方单独撤销。</p>
+        <form method="post" action="{{ url_for('enrollment_setting') }}">
+            {{ protection() }}<input type="hidden" name="enabled" value="{{ 0 if auto_enabled else 1 }}">
+            <button class="btn" type="submit">{{ '暂停新设备自动配对' if auto_enabled else '开启新设备自动配对' }}</button>
+        </form>
+        {% else %}<p class="desc">在 Side A 的「我的 → 连接统一后台」输入后台地址和配对码。</p>{% endif %}
+        {% set base = public_base|default('',true) or url_for('home',_external=true) %}
+        {% if base.startswith('https://') and (public_base|default('',true) or request.host.split(':')[0] not in ('localhost','127.0.0.1','[')) %}
+        <label class="url-box">手机使用的后台地址<input value="{{ base }}" readonly aria-label="手机使用的后台地址"></label>
+        {% else %}<p class="hint">请使用手机能访问的 HTTPS 后台地址。手机上的 localhost 指向手机本身。</p>{% endif %}
+        {% if issued %}<div class="invite" role="status"><span>本次配对码</span><strong>{{ issued }}</strong><small>10 分钟内有效，仅可使用一次。请直接输入到你的设备。</small></div>{% endif %}
+        <form method="post" action="{{ url_for('invite') }}">{{ protection() }}<button class="btn" type="submit">生成一次性配对码</button></form>
+    </section>
+    <section id="catalog" class="panel wide">
+        <div class="heading"><div><p class="eyebrow">03 / CATALOG</p><h2>曲库来源</h2></div><span class="pill">{{ providers|length }} 个来源</span></div>
+        <p class="desc">顺序值较小的来源优先。修改后点本行的「发布」，已配对设备会在下次搜索时使用新设置。</p>
+        <div class="sources">
+            {% for provider in providers %}
+            <article class="source">
+                <div class="source-head"><strong>{{ provider.name }}</strong><span class="small-tag">{{ provider.code }}</span></div>
+                <form method="post" action="{{ url_for('update',provider=provider.id) }}" class="source-form">
+                    {{ protection() }}
+                    <label>名称<input name="name" value="{{ provider.name }}" maxlength="50" required></label>
+                    <label>顺序<input type="number" name="priority" value="{{ provider.priority }}" min="0" max="999" required></label>
+                    <label class="switch"><input type="checkbox" name="enabled" {% if provider.enabled %}checked{% endif %}>启用</label>
+                    <button class="btn" type="submit">发布</button>
+                </form>
+                {% if provider.id not in ('qq','wy','jx','kw') %}
+                <form method="post" action="{{ url_for('remove',provider=provider.id) }}" data-confirm="移除此来源后，其歌曲将无法再通过这个来源播放。继续移除？">{{ protection() }}<button type="submit" class="quiet warning">移除此来源</button></form>
+                {% endif %}
+            </article>
+            {% else %}<p class="empty">还没有配置音源。</p>{% endfor %}
+        </div>
+        <details class="add-source">
+            <summary>添加自定义曲库</summary>
+            <form method="post" action="{{ url_for('add') }}" class="stack">
+                {{ protection() }}
+                <label>显示名称<input name="name" required maxlength="50" placeholder="我的音源"></label>
+                <label>接口地址<input name="endpoint" type="url" required autocomplete="off" placeholder="https://"></label>
+                <label>来源代码<input name="code" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" maxlength="64" autocapitalize="off" spellcheck="false" placeholder="例如 netease"></label>
+                <small>填写可公开访问的 GD 兼容 HTTPS 接口。来源代码由接口提供方指定。</small>
+                <button class="primary" type="submit">添加并发布</button>
+            </form>
+        </details>
+    </section>
+    <section class="panel wide" id="devices">
+        <div class="heading"><div><p class="eyebrow">04 / DEVICES</p><h2>已配对设备</h2></div><span class="pill">{{ devices|length }} 台</span></div>
+        {% if devices %}
+        <ul class="devices">
+        {% for device in devices %}
+            <li>
+                <div><strong>{{ device.name }}</strong><small>最近连接 <time data-unix="{{ device.seen }}">—</time></small></div>
+                <form method="post" action="{{ url_for('revoke',device=device.id) }}" data-confirm="撤销这台设备？它需要新的配对码才能再次访问曲库。">{{ protection() }}<button class="quiet warning" type="submit">撤销设备</button></form>
+            </li>
+        {% endfor %}
+        </ul>
+        {% else %}<p class="empty">还没有配对设备。生成配对码并在手机输入后，设备会出现在这里。</p>{% endif %}
+    </section>
+</div>
+{% endblock %}

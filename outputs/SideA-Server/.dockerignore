@@ -1,0 +1,8 @@
+data
+__pycache__
+*.pyc
+*.pem
+*.key
+*.enc
+.git
+test_*.py

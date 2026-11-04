@@ -1,0 +1,49 @@
+# Local signing, deployment credentials, device backups and toolchains.
+/work/
+/.private/
+.env
+.env.*
+!.env.example
+*secret*
+*.ticket
+*.seed
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+SideASetup.txt
+SideARecoverySeed.txt
+
+# Publish current source and the installer, not personal distribution packages.
+/outputs/*
+!/outputs/SideA/
+!/outputs/SideA-Android/
+!/outputs/SideA-Server/
+!/outputs/安装 Side A 0.4.5 到 iPhone.command
+*.ipa
+*.apk
+*.aab
+*.zip
+
+# Generated files and local runtime data.
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+.gradle/
+build/
+Build/
+DerivedData/
+*.xcresult/
+xcuserdata/
+*.xcuserstate
+*.log
+*.sqlite*
+*.db
+*.db-shm
+*.db-wal
+state/
+data/

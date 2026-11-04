@@ -1,0 +1,20 @@
+services:
+  controller:
+    build: .
+    environment:
+      SIDEA_PUBLIC_BASE: "${SIDEA_PUBLIC_BASE:-}"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18760:8799"
+    volumes:
+      - state:/data
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    logging:
+      options:
+        max-size: "8m"
+        max-file: "2"
+volumes:
+  state:

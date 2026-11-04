@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}管理员登录{% endblock %}
+{% block content %}
+<section class="panel entrance">
+    <p class="eyebrow">SIDE A / ADMIN</p>
+    <h1>管理员登录</h1>
+    <p class="intro">在这里管理音源、授权账号和已配对的设备。</p>
+    <form method="post" action="{{ url_for('login') }}" class="stack">
+        {{ protection() }}
+        <label>管理员密码<input name="password" type="password" required autocomplete="current-password" autofocus></label>
+        <button class="primary" type="submit">登录后台</button>
+    </form>
+</section>
+{% endblock %}

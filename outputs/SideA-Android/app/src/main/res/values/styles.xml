@@ -1,0 +1,8 @@
+<resources>
+    <style name="SideATheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#315046</item>
+        <item name="android:windowBackground">#F8F6F0</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

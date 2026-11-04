@@ -1,0 +1,26 @@
+{% macro protection() -%}
+<input name="csrf" type="hidden" value="{{ csrf() }}">
+{%- endmacro %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>{% block title %}统一后台{% endblock %} · Side A</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+    {% block script %}{% endblock %}
+</head>
+<body>
+    <div class="wrap">
+        <header class="mast">
+            <a class="brand" href="{{ url_for('home') }}"><span class="record" aria-hidden="true"></span><span>Side A</span></a>
+            <div class="mast-tools">{% block mast %}<span class="muted">私人唱片室</span>{% endblock %}</div>
+        </header>
+        <main id="content">
+            {% for msg in get_flashed_messages() %}<p class="flash" role="status">{{ msg }}</p>{% endfor %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</body>
+</html>

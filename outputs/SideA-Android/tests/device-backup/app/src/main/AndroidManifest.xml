@@ -1,0 +1,1 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="studio.sidea.cloudqa"><uses-sdk android:minSdkVersion="28" android:targetSdkVersion="37"/><instrumentation android:name="studio.sidea.cloudqa.CloudProbe" android:targetPackage="studio.sidea.android"/><application android:label="Device backup validation"/></manifest>
