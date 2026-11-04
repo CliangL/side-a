@@ -10,7 +10,7 @@ function itemsFor(r) {
     case 'recent':
       return st.library.recent;
     case 'playlist':
-      return st.library.playlists.find((p) => String(p.id) === r.id)?.tracks || [];
+      return (st.library.playlists.find((p) => String(p.id) === r.id) || {}).tracks || [];
     case 'related':
       return r.items || [];
     default:
@@ -159,13 +159,13 @@ function collectionPage(r) {
   const list = st.library.playlists.find((p) => String(p.id) === r.id),
     items = itemsFor(r),
     title = {
-      playlist: list?.name || '歌单',
+      playlist: (list && list.name) || '歌单',
       favorites: '我的收藏',
       recent: '最近播放',
       related: '沿着这首听',
       mix: mixes[r.index],
     }[r.name];
-  const a = list?.cover || items[0] || r.seed,
+  const a = (list && list.cover) || items[0] || r.seed,
     b = items.find((t) => key(a) !== key(t)) || a;
   return (
     bar('', r.name === 'playlist' ? bt('listMenu', r.id, '歌单管理', ic('more'), 'round') : '') +
@@ -241,7 +241,7 @@ function renderResults() {
   if (r.name !== 'search' || !el('searchResults')) return;
   const scope = st.settings.searchSource || 'all';
   const sourceOnly = scope !== 'all';
-  const inScope = t => !sourceOnly || (st.settings.centralBase && t.centralCatalog && t.trackID?.startsWith(scope + '.') &&
+  const inScope = t => !sourceOnly || (st.settings.centralBase && t.centralCatalog && t.trackID && t.trackID.startsWith(scope + '.') &&
     t.apiEndpoint === st.settings.centralBase.replace(/\/$/,'') + '/v1/music');
   let items = (r.items || []).filter(inScope);
   let heading = '搜索结果';
@@ -256,13 +256,13 @@ function renderResults() {
   }
   el('searchTitle').textContent = heading;
   const target = el('searchResults');
-  if (!items.length) target.innerHTML = !r.q ? '' : empty(r.busy ? '搜索中…' : r.issues?.length ? '暂未取得曲目' : '没有找到歌曲');
+  if (!items.length) target.innerHTML = !r.q ? '' : empty(r.busy ? '搜索中…' : (r.issues && r.issues.length) ? '暂未取得曲目' : '没有找到歌曲');
   else target.innerHTML = rows(items,'search',r.target ? { pick:'selectAdd',select:true } : {});
   if (r.q) {
     const footer = document.createElement('div');
     footer.className = 'search-pager';
     const settled = !r.moreBusy && !r.checkingEvidence;
-    if (r.issues?.length && settled) footer.insertAdjacentHTML('beforeend',textBtn('retrySources','','重试','pill'));
+    if ((r.issues && r.issues.length) && settled) footer.insertAdjacentHTML('beforeend',textBtn('retrySources','','重试','pill'));
     if (r.moreBusy && items.length) footer.appendChild(document.createTextNode('其他结果加载中…'));
     if (r.hasMore && settled) footer.insertAdjacentHTML('beforeend',textBtn('moreSearch','','加载更多','pill'));
     target.appendChild(footer);
@@ -332,8 +332,8 @@ async function runSearch(r, mode = 'fresh') {
     try {
       const result=await req('searchPage',{query:q,searchSource:selection,page:p.page});
       if(!currentRequest())return;
-      const info=result.bySource?.[0];
-      if(!info?.ok)throw Error(info?.error || '曲库暂未响应');
+      const info=result.bySource && result.bySource[0];
+      if(!(info && info.ok))throw Error((info && info.error) || '曲库暂未响应');
       p.issue='';
       let added=0;
       for(const t of result.items || [])if(!r.rawHits.has(key(t))){r.rawHits.set(key(t),t);added++;}
@@ -364,7 +364,7 @@ function searchScopes() {
     searchSourceNames[code] + '</button>').join('');
 }
 window.sideACatalogUpdated = next => {
-  st.settings = { ...st.settings, ...next };
+  st.settings = Object.assign({}, st.settings, next);
   if (el('searchScopes')) el('searchScopes').innerHTML = searchScopes();
 };
 async function setSearchScope(code) {
@@ -435,7 +435,7 @@ function mountPage(r) {
       renderResults();
       queryTimer = setTimeout(() => runSearch(r), 420);
     };
-    if (!r.q && !r.target && st.uiMode !== 'car') setTimeout(() => el('query')?.focus(), 50);
+    if (!r.q && !r.target && st.uiMode !== 'car') setTimeout(() => { const query = el('query'); if (query) query.focus(); }, 50);
   }
   if (r.name === 'settings') {
     document.querySelectorAll('[data-setting]').forEach(

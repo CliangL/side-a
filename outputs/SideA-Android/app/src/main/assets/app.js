@@ -3,7 +3,7 @@ window.sideAPreferences = (preferences) => {
   const oldScope = st.settings.searchSource;
   window.sideACatalogUpdated(preferences);
   const route = current();
-  if (oldScope !== st.settings.searchSource && route?.name === 'search') {
+  if (oldScope !== st.settings.searchSource && route && route.name === 'search') {
     route.requestID = (route.requestID || 0) + 1;
     route.items = []; route.issues = []; route.hasMore = false;
     renderResults(); runSearch(route);
@@ -28,10 +28,12 @@ async function start() {
     st.player = boot.player || { queue: [] };
     known(st.player.track);
     render();
+    window.sideaBoot.ready();
     sysbars();
     refreshCharts();
     scheduleRecommendations();
   } catch (e) {
+    window.sideaBoot.failed('startup');
     el('main').innerHTML =
       '<div class="section"><i class="side">Side A</i>' +
       empty(e.message || '暂时无法打开') +
@@ -50,7 +52,9 @@ document.addEventListener('visibilitychange', async () => {
     }
   }
 });
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sysbars);
+const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
+if (colorScheme.addEventListener) colorScheme.addEventListener('change', sysbars);
+else if (colorScheme.addListener) colorScheme.addListener(sysbars);
 window.addEventListener('resize', () => {
   if (st.playerOpen) {
     const v = el('pager');

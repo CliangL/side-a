@@ -1,6 +1,6 @@
 # Side A
 
-自用音乐播放器，当前 iPhone、Android 手机及车机版 **0.6.0**。包含 iPhone、Android 手机、安卓横屏车机客户端与统一曲库后台，采用毛玻璃界面、专辑封面和播放／歌词页。
+自用音乐播放器，当前 iPhone、Android 手机版 **0.6.0**，车机版 **0.6.1**。包含 iPhone、Android 手机、安卓横屏车机客户端与统一曲库后台，采用毛玻璃界面、专辑封面和播放／歌词页。
 
 ## 功能
 
@@ -65,10 +65,12 @@ xcodebuild -project outputs/SideA/SideA.xcodeproj -scheme SideA \
 
 ```sh
 bash outputs/SideA-Android/build.sh outputs/SideA-0.6.0-Android.apk
-SIDEA_VARIANT=car bash outputs/SideA-Android/build.sh outputs/SideA-0.6.0-Car.apk
+SIDEA_VARIANT=car bash outputs/SideA-Android/build.sh outputs/SideA-0.6.1-Car.apk
 ```
 
 车机包适用于可直接安装 APK、Android 9 或更新版本的设备；使用 `app/src/car/AndroidManifest.xml`，横屏界面按 800×480、1024×600、1280×720 和 1920×720 验证。具体车机的系统栏、屏幕密度、WebView 和音频硬件仍需真机确认。这是独立车机 APK，尚未实现 Android Auto 投屏或 AAOS 系统媒体入口。
+
+0.6.1 修复旧版 WebView 在启动时遇到不支持的 JavaScript 语法、数组方法或媒体查询监听接口而无法显示界面的问题，并提供旧版 CSS 布局回退。界面完全使用 APK 内的资源，启动不等待在线曲库；原生加载层只在前端完成初始渲染后撤下。若界面仍无法启动，会显示重试入口及可复制的 Android／WebView 版本，不采集设备序列号、账户或听歌记录。升级沿用原有签名和恢复配置，可覆盖安装。
 
 ### 统一后台
 
@@ -117,6 +119,8 @@ NODE_PATH="$PWD/work/car-redesign/node_modules" node outputs/SideA-Android/tests
 ```
 
 覆盖四种横屏尺寸、歌词页保留导航、底栏位置一致、封面旋转、切歌、歌词定位、音效入口和手机界面回归。结果写入忽略的 `work/car-redesign/`。
+
+旧内核回归见 [legacy-webview](outputs/SideA-Android/tests/legacy-webview/README.md)：使用真实 Chromium 67／V8 6.7，将 0.6.0 的启动空白与修复版进行对比，并检查搜索、歌词、音效及按钮位置。启动引导的独立测试可直接运行 `node outputs/SideA-Android/tests/legacy-webview/bootstrap.test.cjs`。原生加载层、重试和旧页面回调隔离另有 [startup instrumentation](outputs/SideA-Android/tests/startup/README.md)，仅允许在无凭据的 Android 模拟器上执行；本次已编译，尚未运行该仪器测试或用户的真实车机。
 
 场景参数及降级逻辑的纯 Java 测试：`bash outputs/SideA-Android/tests/sound/run.sh`。模拟器测试探针提供 `mode=sound` 验证实际均衡器和音频播放，`mode=identity` 验证手机／车机恢复身份隔离；构建车机探针时设置 `SIDEA_TEST_TARGET=studio.sidea.car`。测试安装包使用合成恢复种子，不注入私人安装授权。
 

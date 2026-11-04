@@ -74,7 +74,7 @@ function carLibrary() {
 }
 function carCollection(r) {
   const list = st.library.playlists.find(p => String(p.id) === r.id), songs = itemsFor(r);
-  const title = {playlist:list?.name || '歌单',favorites:'我的收藏',recent:'最近播放',related:'沿着这首听',mix:mixes[r.index]}[r.name];
+  const title = {playlist:(list && list.name) || '歌单',favorites:'我的收藏',recent:'最近播放',related:'沿着这首听',mix:mixes[r.index]}[r.name];
   return '<div class="car-page">' + carHeader(title,descFor(r),r.name === 'playlist' ? bt('listMenu',r.id,'歌单管理',ic('more'),'round') : '') +
     '<div class="car-collection-actions">' + bt('playDetail','','播放全部',ic('play') + '播放全部','primary pill') +
     bt('shuffleDetail','','随机播放',ic('shuffle') + '随机','pill') + bt('filter','','歌单内搜索',ic('search'),'round') +
@@ -85,8 +85,8 @@ function carPageHTML(r) {
   if (r.name === 'home') return carHome();
   if (r.name === 'library') return carLibrary();
   if (r.name === 'carLyrics') return '<div class="car-lyrics-page"><header class="car-lyrics-header">' +
-    bt('back','','返回曲库',ic('back'),'round') + '<div class="car-lyrics-heading"><h1 id="carLyricsTitle">'+esc(st.player.track?.title || '同步歌词')+
-    '</h1><p id="carLyricsArtist">'+esc(st.player.track?.artist || '')+'</p></div><span class="car-lyrics-header-spacer" aria-hidden="true"></span></header>' +
+    bt('back','','返回曲库',ic('back'),'round') + '<div class="car-lyrics-heading"><h1 id="carLyricsTitle">'+esc((st.player.track && st.player.track.title) || '同步歌词')+
+    '</h1><p id="carLyricsArtist">'+esc((st.player.track && st.player.track.artist) || '')+'</p></div><span class="car-lyrics-header-spacer" aria-hidden="true"></span></header>' +
     '<div id="carLyrics" class="car-lyrics" aria-label="同步歌词" tabindex="0"></div></div>';
   if (['mix','favorites','recent','playlist','related'].includes(r.name)) return carCollection(r);
   return null;
@@ -94,7 +94,7 @@ function carPageHTML(r) {
 function renderCarNow() {
   const p = st.player, t = p.track, panel = el('carNow');
   if (!el('carProgress')) {
-    panel.innerHTML = '<div class="car-progress-wrap"><input id="carProgress" type="range" class="progress" min="0" max="1" step="0.1" value="0" aria-label="播放进度"><div class="times"><span id="carElapsed">0:00</span><span id="carDuration">0:00</span></div></div>' +
+    panel.innerHTML = '<div class="car-progress-wrap"><input id="carProgress" type="range" class="progress" min="0" max="1" step="0.1" value="0" aria-label="播放进度"><span id="carElapsed">0:00</span><span id="carDuration">0:00</span></div>' +
       '<div class="car-track-info"></div><div class="car-controls"></div><div class="car-now-tools"></div><div class="car-play-error" role="status" hidden></div>';
     const seek = el('carProgress');
     seek.oninput = () => { carScrubbing = true; updateCarProgress(Number(seek.value)); };
@@ -102,7 +102,7 @@ function renderCarNow() {
     seek.onpointercancel = () => { carScrubbing = false; updateCarProgress(); };
   }
   const info = panel.querySelector('.car-track-info');
-  const infoSig = [t ? key(t) : '',t?.title,t?.artist,p.quality,p.loading].join('|');
+  const infoSig = [t ? key(t) : '',(t && t.title),(t && t.artist),p.quality,p.loading].join('|');
   if (info.dataset.sig !== infoSig) {
     info.dataset.sig = infoSig;
     info.innerHTML = t ? '<button class="car-song-title" '+attr('carLyrics')+' aria-label="打开全屏歌词"><strong>'+esc(t.title)+'</strong><span>'+esc(p.loading ? '载入中…' : t.artist)+'</span></button>' :
@@ -177,8 +177,8 @@ function carLyricsFor(t) {
 async function updateCarLyrics() {
   const body=el('carLyrics'),t=st.player.track;
   if (!body || current().name !== 'carLyrics') return;
-  el('carLyricsTitle').textContent=t?.title || '同步歌词';
-  el('carLyricsArtist').textContent=t?.artist || '';
+  el('carLyricsTitle').textContent=(t && t.title) || '同步歌词';
+  el('carLyricsArtist').textContent=(t && t.artist) || '';
   if(!t){
     carLyricRequest++;carLyricTrack='';carLines=[];carActiveLine=-1;
     body.innerHTML=empty('还没有正在播放的歌曲');
@@ -209,7 +209,8 @@ function focusCarLine(force=false) {
   let index=carLines.length-1;
   while(index>=0 && Number(carLines[index].time)>Number(st.player.elapsed||0))index--;
   if(index===carActiveLine && !force)return;
-  body.querySelector('.active')?.classList.remove('active');
+  const previousLine = body.querySelector('.active');
+  if (previousLine) previousLine.classList.remove('active');
   const line=index>=0?body.children[index]:null;
   if(line){
     line.classList.add('active');

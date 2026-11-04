@@ -1,10 +1,10 @@
 'use strict';
 function soundPreset() {
-  const id=st.player.sound?.preset || st.settings.soundPreset || 'original';
+  const id=(st.player.sound && st.player.sound.preset) || st.settings.soundPreset || 'original';
   return id==='commute'?'vocal':id==='night'?'soft':id;
 }
 function soundName() {
-  return (st.settings.soundPresets || []).find(p => p.id === soundPreset())?.name || '原声';
+  return ((st.settings.soundPresets || []).find(p => p.id === soundPreset()) || {}).name || '原声';
 }
 let soundSaving = false;
 function soundSheet() {
@@ -23,7 +23,7 @@ actions.soundPick=async preset=>{
   soundSaving=true;soundSheet();
   try{
     const next=await req('sound',{preset});
-    st.settings.soundPreset=next.sound?.preset || preset;
+    st.settings.soundPreset=(next.sound && next.sound.preset) || preset;
     applyPlayer(next);
     if(current().name==='settings')render();
     if(st.sheet==='sound')closeSheet();

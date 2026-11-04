@@ -1,7 +1,7 @@
 'use strict';
 const el = (id) => document.getElementById(id);
 const esc = (x) =>
-  String(x ?? '').replace(
+  String(x == null ? '' : x).replace(
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
   );
@@ -84,7 +84,7 @@ window.sideAReply = (id, ok, value) => {
   clearTimeout(p.timer);
   awaiters.delete(Number(id));
   if (ok) p.resolve(value);
-  else p.reject(Error(String(value?.message || value || '暂时无法完成请求')));
+  else p.reject(Error(String((value && value.message) || value || '暂时无法完成请求')));
 };
 let toastTimer;
 function notify(msg) {
@@ -116,19 +116,19 @@ const st = {
 const tracks = new Map(),
   lists = new Map(),
   actions = Object.create(null);
-const key = (t) => String(t?.id || (t?.source || 'netease') + ':' + (t?.trackID || ''));
+const key = (t) => String((t && t.id) || ((t && t.source) || 'netease') + ':' + ((t && t.trackID) || ''));
 const known = (t) => {
   if (t && t.trackID != null) tracks.set(key(t), t);
   return t;
 };
-const current = () => st.routes.at(-1);
+const current = () => st.routes[st.routes.length - 1];
 const favorite = (t) => st.library.favorites.some((v) => key(v) === key(t));
 const time = (s) => {
   s = Math.max(0, Math.floor(Number(s) || 0));
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 };
 function nameOf(t) {
-  return t?.title || '未知曲目';
+  return (t && t.title) || '未知曲目';
 }
 const starterArt = new Map(),
   artCache = new Map(),
@@ -203,7 +203,7 @@ function backdrop(t) {
 }
 const sourceNames = Object.freeze({ all: '全部曲库', central: '统一曲库', qq: 'QQ 音乐', wy: '网易云', kw: '酷我音乐', jx: 'JOOX', netease: '网易云音乐', joox: 'JOOX', bilibili: '哔哩哔哩', tencent: 'QQ 音乐' });
 function trackSourceLabel(t) {
-  const provider = t.trackID?.split('.')[0];
+  const provider = t.trackID && t.trackID.split('.')[0];
   if (t.centralCatalog && t.source === 'central' && ['qq','wy','kw','jx'].includes(provider) &&
       (!t.sourceLabel || t.sourceLabel === '统一曲库' || /[（(]GD[）)]\s*$/.test(t.sourceLabel))) return sourceNames[provider];
   return t.sourceLabel || sourceNames[t.source] || t.source || '';
@@ -327,7 +327,7 @@ function libIsNew(l) {
   return l && (!st.library.revision || !l.revision || Number(l.revision) >= Number(st.library.revision));
 }
 async function mutate(op, data = {}) {
-  const l = await req('libraryAction', { op, ...data });
+  const l = await req('libraryAction', Object.assign({ op }, data));
   if (libIsNew(l)) st.library = l;
   render();
   if (st.playerOpen) updatePlayer(true);
@@ -335,7 +335,7 @@ async function mutate(op, data = {}) {
   return l;
 }
 async function playCmd(op, payload = {}) {
-  const info = await req('playAction', { op, ...payload });
+  const info = await req('playAction', Object.assign({ op }, payload));
   if (info && Array.isArray(info.queue)) applyPlayer(info);
   return info;
 }
@@ -469,7 +469,7 @@ function applyPlayer(next) {
     else failedPlaybacks.delete(id);
     if(before !== failedPlaybacks.has(id) && current().name === 'search')renderResults();
   }
-  if (next.sound?.status === 'unavailable' && (previous.sound?.status !== 'unavailable' || previous.sound?.preset !== next.sound.preset))
+  if ((next.sound && next.sound.status) === 'unavailable' && ((previous.sound && previous.sound.status) !== 'unavailable' || (previous.sound && previous.sound.preset) !== next.sound.preset))
     notify(next.sound.message || '当前输出暂不支持此音效，已使用原声');
   refreshEmbedded(next);
   renderDock();
@@ -498,7 +498,8 @@ document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-act]');
   if (!b || b.disabled) return;
   try {
-    await actions[b.dataset.act]?.(b.dataset.arg, b, e);
+    const action = actions[b.dataset.act];
+    if (action) await action(b.dataset.arg, b, e);
   } catch (err) {
     notify(err.message || '操作失败');
   }

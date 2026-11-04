@@ -2,6 +2,9 @@ package studio.sidea.android;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.pm.PackageInfo;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
@@ -9,6 +12,10 @@ import android.os.*;
 import android.view.*;
 import android.webkit.*;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Button;
+import android.widget.ProgressBar;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -21,32 +28,34 @@ public final class MainActivity extends Activity {
     private final ExecutorService actions=Executors.newSingleThreadExecutor();
     private final ExecutorService network=Executors.newFixedThreadPool(4);
     private final ExecutorService artwork=Executors.newFixedThreadPool(3);
-    private WebView web;
+    private volatile WebView web;
+    private volatile int pageGeneration;
+    private LinearLayout startup;
+    private String startupFailure="";
     private FrameLayout frame;
     private Catalog catalog;
     private boolean active, ready;
     private long lastRevision=-1;
     private String lastPlayer="";
     private volatile boolean destroyed;
+    private final Runnable startupTimeout=()->{if(!ready&&!destroyed)failStartup(pageGeneration,"timeout");};
     private final Runnable tick=new Runnable(){ public void run(){
         if(!active||destroyed)return;
-        if(ready){
+        if(ready)try{
             JSONObject state=PlaybackService.state(MainActivity.this);
             String raw=state.toString();
             if(!raw.equals(lastPlayer)){lastPlayer=raw;send("sideAPlayer",raw);}
             long revision=Library.revision();
             if(revision!=lastRevision){lastRevision=revision;send("sideALibrary",Library.snapshot(MainActivity.this).toString());send("sideAPreferences",settings(new JSONObject()).toString());}
-        }
+        }catch(RuntimeException|LinkageError unavailable){failStartup(pageGeneration,"native");}
         main.postDelayed(this,700);
     }};
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         catalog=new Catalog(this);
         frame=new FrameLayout(this);
-        web=new WebView(this);
-        frame.addView(web,new FrameLayout.LayoutParams(-1,-1));
         setContentView(frame);
-        boolean night=(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
+        boolean night="car".equals(appUiMode())||(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
         bars(night);
         if(Build.VERSION.SDK_INT>=30){
             getWindow().setDecorFitsSystemWindows(false);
@@ -55,33 +64,110 @@ public final class MainActivity extends Activity {
                 v.setPadding(i.left,i.top,i.right,i.bottom);return WindowInsets.CONSUMED;
             });
         }else getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        WebSettings s=web.getSettings();
-        s.setJavaScriptEnabled(true);s.setAllowFileAccess(false);s.setAllowContentAccess(false);
-        s.setDomStorageEnabled(false);s.setSupportMultipleWindows(false);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        web.setWebViewClient(new WebViewClient(){
-            @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return true;}
-            @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
-                Uri u=request.getUrl();
-                if ("data".equals(u.getScheme()) && u.toString().startsWith("data:image/")) return null;
-                String path=u.getPath();
-                if(!"https".equals(u.getScheme())||!"sidea.local".equals(u.getHost())||path==null||path.contains("..")||!path.matches("/[a-zA-Z0-9._/-]+"))return blocked();
-                String filename=path.substring(1);
-                if(!filename.matches("(?:index\\.html|(?:app|core|pages|playing|sound|car)\\.js|style\\.css|StarterArt/cover-[0-9]+\\.jpg)"))return blocked();
-                String mime=filename.endsWith(".html")?"text/html":filename.endsWith(".css")?"text/css":filename.endsWith(".js")?"application/javascript":filename.endsWith(".jpg")?"image/jpeg":filename.endsWith(".png")?"image/png":filename.endsWith(".svg")?"image/svg+xml":filename.endsWith(".json")?"application/json":"application/octet-stream";
-                try{
-                    Map<String,String> headers=new HashMap<>();
-                    headers.put("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-src 'none'; base-uri 'none'");
-                    headers.put("X-Content-Type-Options","nosniff");
-                    return new WebResourceResponse(mime,"UTF-8",200,"OK",headers,getAssets().open(filename));
-                }catch(IOException error){return blocked();}
-            }
-            @Override public void onPageFinished(WebView view,String url){if("https://sidea.local/index.html".equals(url)){ready=true;lastPlayer="";}}
-        });
-        web.addJavascriptInterface(new Bridge(),"SideA");
-        web.loadUrl("https://sidea.local/index.html");
+        startup=new LinearLayout(this);
+        startup.setOrientation(LinearLayout.VERTICAL);startup.setGravity(Gravity.CENTER);
+        int padding=dp(24);startup.setPadding(padding,padding,padding,padding);
+        startup.setBackgroundColor(Color.parseColor("#172a2b"));
+        frame.addView(startup,new FrameLayout.LayoutParams(-1,-1));
+        openInterface();
         if(Build.VERSION.SDK_INT>=33)getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::back);
+    }
+    private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
+    private TextView startupText(String value,int size,int color){
+        TextView text=new TextView(this);text.setText(value);text.setTextSize(size);text.setTextColor(color);
+        text.setGravity(Gravity.CENTER);text.setPadding(0,dp(8),0,dp(8));return text;
+    }
+    private void openInterface(){
+        if(destroyed)return;
+        ready=false;startupFailure="";lastPlayer="";lastRevision=-1;
+        int generation=++pageGeneration;
+        main.removeCallbacks(startupTimeout);
+        disposeWeb(web);
+        startup.removeAllViews();startup.setVisibility(View.VISIBLE);
+        ProgressBar progress=new ProgressBar(this);startup.addView(progress,new LinearLayout.LayoutParams(dp(32),dp(32)));
+        startup.addView(startupText("Side A",22,Color.parseColor("#e3ebd7")));
+        main.postDelayed(startupTimeout,15_000);
+        try{
+            final WebView view=new WebView(this);web=view;
+            view.setBackgroundColor(Color.parseColor("#172a2b"));
+            frame.addView(view,0,new FrameLayout.LayoutParams(-1,-1));
+            WebSettings settings=view.getSettings();
+            settings.setJavaScriptEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);
+            settings.setDomStorageEnabled(false);settings.setSupportMultipleWindows(false);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            view.setWebViewClient(new WebViewClient(){
+                @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest request){return true;}
+                @Override public boolean shouldOverrideUrlLoading(WebView v,String url){return true;}
+                @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest request){
+                    Uri u=request.getUrl();
+                    if ("data".equals(u.getScheme()) && u.toString().startsWith("data:image/")) return null;
+                    String path=u.getPath();
+                    if(!"https".equals(u.getScheme())||!"sidea.local".equals(u.getHost())||path==null||path.contains("..")||!path.matches("/[a-zA-Z0-9._/-]+"))return blocked();
+                    String filename=path.substring(1);
+                    if(!filename.matches("(?:index\\.html|(?:bootstrap|app|core|pages|playing|sound|car)\\.js|style\\.css|StarterArt/cover-[0-9]+\\.jpg)"))return blocked();
+                    String mime=filename.endsWith(".html")?"text/html":filename.endsWith(".css")?"text/css":filename.endsWith(".js")?"application/javascript":"image/jpeg";
+                    try{
+                        Map<String,String> headers=new HashMap<>();
+                        headers.put("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-src 'none'; base-uri 'none'");
+                        headers.put("X-Content-Type-Options","nosniff");
+                        return new WebResourceResponse(mime,"UTF-8",200,"OK",headers,getAssets().open(filename));
+                    }catch(IOException error){
+                        if(!filename.endsWith(".jpg"))main.post(()->failStartup(generation,"resource"));
+                        return blocked();
+                    }
+                }
+                @Override public void onReceivedError(WebView v,WebResourceRequest request,WebResourceError error){
+                    if(request.isForMainFrame())failStartup(generation,"resource");
+                }
+                @Override public void onReceivedHttpError(WebView v,WebResourceRequest request,WebResourceResponse error){
+                    if(request.isForMainFrame())failStartup(generation,"resource");
+                }
+                @Override public boolean onRenderProcessGone(WebView v,RenderProcessGoneDetail detail){
+                    if(generation==pageGeneration){failStartup(generation,"renderer");disposeWeb(v);}
+                    return true;
+                }
+            });
+            view.addJavascriptInterface(new Bridge(view,generation),"SideA");
+            view.loadUrl("https://sidea.local/index.html");
+        }catch(RuntimeException|LinkageError unavailable){disposeWeb(web);failStartup(generation,"webview");}
+    }
+    private void disposeWeb(WebView old){
+        if(old==null)return;
+        if(web==old)web=null;
+        try{old.removeJavascriptInterface("SideA");old.stopLoading();frame.removeView(old);old.destroy();}
+        catch(RuntimeException|LinkageError ignored){frame.removeView(old);}
+    }
+    private void uiReady(int generation){
+        if(destroyed||generation!=pageGeneration||web==null)return;
+        ready=true;startupFailure="";lastPlayer="";lastRevision=-1;
+        main.removeCallbacks(startupTimeout);startup.setVisibility(View.GONE);
+    }
+    private void failStartup(int generation,String reason){
+        if(destroyed||generation!=pageGeneration)return;
+        ready=false;main.removeCallbacks(startupTimeout);
+        if(reason.equals(startupFailure)&&startup.getVisibility()==View.VISIBLE)return;
+        startupFailure=reason;startup.removeAllViews();startup.setVisibility(View.VISIBLE);
+        startup.addView(startupText("暂时无法打开界面",22,Color.parseColor("#e3ebd7")));
+        startup.addView(startupText("请重新打开；仍有问题时可复制兼容信息反馈。",14,Color.parseColor("#bacbc1")));
+        Button retry=new Button(this);retry.setText("重新打开");retry.setAllCaps(false);
+        retry.setOnClickListener(v->openInterface());startup.addView(retry,new LinearLayout.LayoutParams(dp(220),dp(52)));
+        Button copy=new Button(this);copy.setText("复制兼容信息");copy.setAllCaps(false);
+        copy.setOnClickListener(v->{
+            ClipboardManager clipboard=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+            if(clipboard!=null){clipboard.setPrimaryClip(ClipData.newPlainText("Side A 兼容信息",compatibilityInfo()));copy.setText("已复制");}
+        });startup.addView(copy,new LinearLayout.LayoutParams(dp(220),dp(52)));
+        startup.addView(startupText(compatibilityVersions(),12,Color.parseColor("#9fb5aa")));
+    }
+    private String compatibilityVersions(){
+        String version="不可用";
+        try{PackageInfo info=WebView.getCurrentWebViewPackage();if(info!=null)version=info.versionName;}catch(RuntimeException|LinkageError ignored){}
+        return "Android "+Build.VERSION.RELEASE+" · WebView "+version;
+    }
+    private String compatibilityInfo(){
+        String version="";
+        try{version=getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(android.content.pm.PackageManager.NameNotFoundException ignored){}
+        return "Side A "+version+" ("+appUiMode()+")\n"+compatibilityVersions()+"\n启动阶段："+startupFailure;
     }
     private WebResourceResponse blocked(){return new WebResourceResponse("text/plain","UTF-8",403,"Forbidden",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
     @SuppressWarnings("deprecation")
@@ -97,7 +183,7 @@ public final class MainActivity extends Activity {
         }else getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
     }
     private void back(){
-        if(web==null){finish();return;}
+        if(web==null||!ready){moveTaskToBack(true);return;}
         web.evaluateJavascript("Boolean(window.sideABack && window.sideABack())", result->{if(!"true".equals(result))moveTaskToBack(true);});
     }
     @Override public void onBackPressed(){back();}
@@ -113,11 +199,12 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onPause(){active=false;main.removeCallbacks(tick);super.onPause();}
     @Override protected void onDestroy(){
-        destroyed=true;main.removeCallbacks(tick);network.shutdownNow();artwork.shutdownNow();actions.shutdown();
-        web.removeJavascriptInterface("SideA");frame.removeView(web);web.destroy();super.onDestroy();
+        destroyed=true;main.removeCallbacks(tick);main.removeCallbacks(startupTimeout);
+        network.shutdownNow();artwork.shutdownNow();actions.shutdown();
+        disposeWeb(web);super.onDestroy();
     }
     private void send(String name,String parameters){
-        if(!destroyed)web.evaluateJavascript("window."+name+" && window."+name+"("+parameters.replace("\u2028","\\u2028").replace("\u2029","\\u2029")+")",null);
+        if(!destroyed&&web!=null)web.evaluateJavascript("window."+name+" && window."+name+"("+parameters.replace("\u2028","\\u2028").replace("\u2029","\\u2029")+")",null);
     }
     private Object recommend()throws Exception{
         JSONObject seed=Library.seed(this);
@@ -211,21 +298,35 @@ public final class MainActivity extends Activity {
         }
     }
     private final class Bridge {
+        private final WebView ownerView;
+        private final int generation;
+        Bridge(WebView view,int generation){ownerView=view;this.generation=generation;}
+        private boolean current(){return !destroyed&&generation==pageGeneration&&ownerView==web;}
+        @JavascriptInterface public void uiReady(){main.post(()->{if(current())MainActivity.this.uiReady(generation);});}
+        @JavascriptInterface public void uiFailed(String kind){
+            // Never record JS exception messages, URLs, song names, or request parameters.
+            String reason="runtime".equals(kind)?"runtime":"startup".equals(kind)?"startup":"script";
+            main.post(()->{if(current()&&!ready)failStartup(generation,reason);});
+        }
         @JavascriptInterface public void request(int id,String action,String payload){
-            if(destroyed||action==null)return;
+            if(!current()||action==null)return;
             ExecutorService executor=action.equals("cover")?artwork:
                     Arrays.asList("search","searchPage","prepareSearch","searchRank","searchEvidence","discover","related","recommend","genres","lyrics").contains(action)?network:actions;
-            executor.execute(()->{
+            try{executor.execute(()->{
+                if(!current())return;
                 Object result;boolean ok=true;
                 try{
                     JSONObject args=new JSONObject(payload==null||payload.isEmpty()?"{}":payload);
                     result=handle(action,args);
+                }catch(LinkageError unavailable){
+                    ok=false;result="当前系统暂不支持此功能";
+                    if("init".equals(action))main.post(()->{if(current())failStartup(generation,"native");});
                 }catch(Exception e){ok=false;String m=e.getMessage();
                     result=m==null||m.length()>180?"暂时无法完成，请重试":m;}
                 String json=result instanceof String?JSONObject.quote((String)result):String.valueOf(result);
                 String parameters=id+","+ok+","+json;
-                main.post(()->send("sideAReply",parameters));
-            });
+                main.post(()->{if(current())send("sideAReply",parameters);});
+            });}catch(RejectedExecutionException ignored){}
         }
     }
 }
