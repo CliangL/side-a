@@ -110,6 +110,7 @@ const st = {
   carousel: 0,
   playerOpen: false,
   sheet: null,
+  uiMode: 'phone',
   selection: new Set(),
 };
 const tracks = new Map(),
@@ -307,6 +308,10 @@ function goBack() {
     setTab(0);
     return true;
   }
+  if (st.uiMode === 'car' && current().name !== 'home') {
+    carNavigate('home');
+    return true;
+  }
   return false;
 }
 window.sideABack = goBack;
@@ -375,6 +380,11 @@ function render(remount = false) {
   mountPage(route);
 }
 function renderDock() {
+  if (st.uiMode === 'car') {
+    renderCarNav();
+    renderCarNow();
+    return;
+  }
   let p = st.player,
     t = p.track,
     mini = el('mini'),
@@ -464,6 +474,8 @@ function applyPlayer(next) {
     openPlayer();
   }
   if (st.playerOpen) updatePlayer(false, previous);
+  if (st.uiMode === 'car') updateCarLyrics();
+  if (st.sheet === 'sound' && JSON.stringify(previous.sound) !== JSON.stringify(next.sound)) soundSheet();
   if (
     st.sheet === 'queue' &&
     (previous.index !== next.index || JSON.stringify(previous.queue) !== JSON.stringify(next.queue))

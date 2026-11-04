@@ -12,6 +12,7 @@ struct CloudPlayback: Codable, Equatable {
     var cellularDataSaver = true
     var losslessOnly = false
     var resume = Resume()
+    var soundPreset: String? = nil
 }
 
 struct DeviceLibrarySnapshot: Codable, Equatable {
@@ -53,7 +54,8 @@ struct DeviceLibrarySnapshot: Codable, Equatable {
             preferLossless: choose(pb.preferLossless, pl.preferLossless, pr.preferLossless),
             cellularDataSaver: choose(pb.cellularDataSaver, pl.cellularDataSaver, pr.cellularDataSaver),
             losslessOnly: choose(pb.losslessOnly, pl.losslessOnly, pr.losslessOnly),
-            resume: choose(pb.resume, pl.resume, pr.resume))
+            resume: choose(pb.resume, pl.resume, pr.resume),
+            soundPreset: choose(pb.soundPreset ?? "original", pl.soundPreset ?? "original", pr.soundPreset ?? "original"))
         result.selectedProvider = choose(base.effectiveProvider, local.effectiveProvider, remote.effectiveProvider)
         result.qqSearch = result.selectedProvider == "qq"
         return result

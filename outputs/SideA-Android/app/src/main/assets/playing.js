@@ -13,12 +13,16 @@ let playerTrack = '',
   oldRevision = '';
 function sysbars() {
   return req('sysBars', {
-    dark: st.playerOpen || matchMedia('(prefers-color-scheme:dark)').matches,
+    dark: st.uiMode === 'car' || st.playerOpen || matchMedia('(prefers-color-scheme:dark)').matches,
   }).catch(() => {});
 }
 function openPlayer() {
   if (!st.player.track) {
     notify('先选择一首歌');
+    return;
+  }
+  if (st.uiMode === 'car') {
+    carOpenLyrics();
     return;
   }
   st.playerOpen = true;
@@ -79,6 +83,7 @@ function mountPlayer() {
     '<div class="transport"><div class="playtools">' +
     bt('turnPage', '', '歌词', '<span id="pageTool"></span>', '') +
     bt('quality', '', '音质', ic('wave') + '音质', '') +
+    bt('sound', '', '场景音效', ic('equal') + '音效', '') +
     bt('queue', '', '待播列表', ic('queue') + '待播', '') +
     '</div><input type="range" class="progress" id="progress" min="0" max="1" value="0" step="0.1" aria-label="播放进度"><div class="times"><span id="elapsed">0:00</span><span id="remain">−0:00</span></div><div class="controls">' +
     bt('shuffleMode', '', '随机播放', ic('shuffle'), 'mode') +

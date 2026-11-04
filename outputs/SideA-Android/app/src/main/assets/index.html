@@ -13,11 +13,15 @@
     <script defer src="core.js"></script>
     <script defer src="pages.js"></script>
     <script defer src="playing.js"></script>
+    <script defer src="sound.js"></script>
+    <script defer src="car.js"></script>
     <script defer src="app.js"></script>
   </head>
   <body>
     <div id="shell">
+      <nav id="carNav" aria-label="主导航" hidden></nav>
       <main id="main" tabindex="-1"></main>
+      <aside id="carNow" aria-label="播放控制" hidden></aside>
       <footer id="dock">
         <div id="mini"></div>
         <nav id="tabs"></nav>

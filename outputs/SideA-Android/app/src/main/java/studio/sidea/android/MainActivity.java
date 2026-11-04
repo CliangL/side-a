@@ -67,7 +67,7 @@ public final class MainActivity extends Activity {
                 String path=u.getPath();
                 if(!"https".equals(u.getScheme())||!"sidea.local".equals(u.getHost())||path==null||path.contains("..")||!path.matches("/[a-zA-Z0-9._/-]+"))return blocked();
                 String filename=path.substring(1);
-                if(!filename.matches("(?:index\\.html|(?:app|core|pages|playing)\\.js|style\\.css|StarterArt/cover-[0-9]+\\.jpg)"))return blocked();
+                if(!filename.matches("(?:index\\.html|(?:app|core|pages|playing|sound|car)\\.js|style\\.css|StarterArt/cover-[0-9]+\\.jpg)"))return blocked();
                 String mime=filename.endsWith(".html")?"text/html":filename.endsWith(".css")?"text/css":filename.endsWith(".js")?"application/javascript":filename.endsWith(".jpg")?"image/jpeg":filename.endsWith(".png")?"image/png":filename.endsWith(".svg")?"image/svg+xml":filename.endsWith(".json")?"application/json":"application/octet-stream";
                 try{
                     Map<String,String> headers=new HashMap<>();
@@ -147,13 +147,20 @@ public final class MainActivity extends Activity {
         }else if("clear".equals(op))catalog.clear();
         JSONObject result=object("preferLossless",prefs.getBoolean("preferLossless",true),"losslessOnly",prefs.getBoolean("losslessOnly",false),"cellularDataSaver",prefs.getBoolean("cellularDataSaver",true),
                 "searchSource",MusicSource.scope(prefs.getString("searchSource","all")),"allSources",new JSONArray(MusicSource.selections(prefs,"all")),
-                "centralBase",CentralCatalog.base(prefs));
+                "centralBase",CentralCatalog.base(prefs),"soundPreset",SoundPreset.normalize(prefs.getString("soundPreset",SoundPreset.ORIGINAL)),"soundPresets",AndroidSoundEffects.presets());
         if("storage".equals(op)||"clear".equals(op)) put(result,"cacheBytes",catalog.cacheBytes());
         return result;
     }
+    private String appUiMode(){
+        try{
+            Bundle metadata=getPackageManager().getApplicationInfo(getPackageName(),android.content.pm.PackageManager.GET_META_DATA).metaData;
+            return metadata!=null&&"car".equals(metadata.getString("studio.sidea.UI_MODE"))?"car":"phone";
+        }catch(android.content.pm.PackageManager.NameNotFoundException e){return "phone";}
+    }
     private Object handle(String action,JSONObject args)throws Exception{
         switch(action){
-            case "init":return object("library",Library.snapshot(this),"starter",catalog.starters(),"player",PlaybackService.state(this),"settings",settings(new JSONObject()));
+            case "init":return object("library",Library.snapshot(this),"starter",catalog.starters(),"player",PlaybackService.state(this),"settings",settings(new JSONObject()),"uiMode",appUiMode());
+            case "sound":return PlaybackService.commandAndState(this,"sound",args.toString());
             case "player":return PlaybackService.state(this);
             case "library":return Library.snapshot(this);
             case "libraryAction":return Library.action(this,args);

@@ -1,9 +1,12 @@
 #!/bin/bash
 # Emulator-only instrumentation; sign with the same certificate as the target Side A APK.
-# Modes: unit, seed (0.4.4), upgrade, restore (after real uninstall), offline, conflict, sources.
+# Modes: unit, sound, identity, seed (0.4.4), upgrade, restore, offline, conflict, sources.
+# SIDEA_TEST_TARGET may select studio.sidea.android (default) or studio.sidea.car.
 # The restore fixture is saved in the target's external files as qa-evidence.json; preserve it on the host across uninstall.
 set -euo pipefail
 src="$(cd "$(dirname "$0")" && pwd)/app/src/main"
+target="${SIDEA_TEST_TARGET:-studio.sidea.android}"
+case "$target" in studio.sidea.android|studio.sidea.car) ;; *) printf 'Unsupported test target.\n' >&2; exit 1;; esac
 : "${ANDROID_SDK_ROOT:?Set ANDROID_SDK_ROOT to the Android SDK directory}"
 : "${JAVA_HOME:?Set JAVA_HOME to a JDK (17 or newer)}"
 : "${SIDEA_KEYSTORE:?Set SIDEA_KEYSTORE to the PKCS12 signing keystore}"
@@ -17,8 +20,9 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/sidea-build.XXXXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 export PATH="$JAVA_HOME/bin:$PATH"
 mkdir -p "$tmp"/{gen,classes,dex}
+sed "s/android:targetPackage=\"studio.sidea.android\"/android:targetPackage=\"$target\"/" "$src/AndroidManifest.xml" > "$tmp/AndroidManifest.xml"
 "$build_tools/aapt2" compile --dir "$src/res" -o "$tmp/res.zip"
-"$build_tools/aapt2" link -I "$platform" --manifest "$src/AndroidManifest.xml" \
+"$build_tools/aapt2" link -I "$platform" --manifest "$tmp/AndroidManifest.xml" \
   --java "$tmp/gen" -A "$src/assets" "$tmp/res.zip" -o "$tmp/unsigned.apk"
 find "$src/java" "$tmp/gen" -name '*.java' | while IFS= read -r file; do printf '"%s"\n' "$file"; done > "$tmp/sources"
 javac --release 17 -encoding UTF-8 -classpath "$platform" -d "$tmp/classes" @"$tmp/sources"

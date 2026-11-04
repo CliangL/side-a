@@ -95,7 +95,14 @@ public final class CloudProbe extends Instrumentation {
             action(obj("op","favorite","track",c));
             call(library,"acknowledgeCloud",new Class[]{Context.class,JSONObject.class,long.class},app,sent,2L);
             check((boolean)call(library,"cloudDirty",new Class[]{Context.class},app)&&capture().getJSONObject("library").getJSONArray("favorites").length()==2,"acknowledgment discarded in-flight local edit");
-            out.putString("persistence","6 failed-write/corrupt/missing/empty-remote/in-flight-edit assertions passed");
+            JSONObject soundRemote=snap(obj("favorites",arr(a)));soundRemote.put("settings",obj("soundPreset","night"));
+            settingsDisk.edit().remove("soundPreset").commit();setState(obj(),obj());
+            check(mergeCloud(app,soundRemote,1).getJSONObject("settings").getString("soundPreset").equals("night")&&settingsDisk.getString("soundPreset","").equals("night"),"sound selection not restored");
+            settingsDisk.edit().putString("soundPreset","vocal").commit();
+            JSONObject other=copy(soundRemote);other.getJSONObject("settings").put("searchSource","kw");
+            JSONObject soundMerged=mergeCloud(app,other,2).getJSONObject("settings");
+            check(soundMerged.getString("soundPreset").equals("vocal")&&soundMerged.getString("searchSource").equals("kw"),"local sound choice lost during independent remote change");
+            out.putString("persistence","8 failed-write/corrupt/missing/empty-remote/in-flight-edit/sound-restore assertions passed");
         }finally{
             for(SharedPreferences store:new SharedPreferences[]{disk,settingsDisk}){
             SharedPreferences.Editor ed=store.edit().clear();for(java.util.Map.Entry<String,?> item:(store==disk?old:oldSettings).entrySet()){
@@ -225,6 +232,73 @@ public final class CloudProbe extends Instrumentation {
         try(FileOutputStream file=new FileOutputStream(new File(app.getExternalFilesDir(null),"source-tabs.png"))){image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,file);}image.recycle();
         out.putString("sources","source tabs working; search selection included in acknowledged backup");
     }
+    void sound()throws Exception{
+        // Generated PCM fixture: no network, accounts, library, or personal media.
+        File tone=new File(app.getCacheDir(),"sound-test.wav");
+        int rate=48000,frames=rate*3;java.nio.ByteBuffer bytes=java.nio.ByteBuffer.allocate(44+frames*2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        bytes.put("RIFF".getBytes(StandardCharsets.US_ASCII)).putInt(36+frames*2).put("WAVEfmt ".getBytes(StandardCharsets.US_ASCII));
+        bytes.putInt(16).putShort((short)1).putShort((short)1).putInt(rate).putInt(rate*2).putShort((short)2).putShort((short)16);
+        bytes.put("data".getBytes(StandardCharsets.US_ASCII)).putInt(frames*2);
+        for(int n=0;n<frames;n++){double t=n/(double)rate;bytes.putShort((short)(1600*(Math.sin(2*Math.PI*63*t)+Math.sin(2*Math.PI*1000*t)+Math.sin(2*Math.PI*4000*t))));}
+        java.nio.file.Files.write(tone.toPath(),bytes.array());
+        Class<?> wrapper=app.getClassLoader().loadClass("studio.sidea.android.AndroidSoundEffects"),control=app.getClassLoader().loadClass("studio.sidea.android.SoundEffects"),volumeClass=app.getClassLoader().loadClass("studio.sidea.android.SoundEffects$Volume");
+        Object effects=call(wrapper,"create",new Class[]{});
+        Method attach=method(control,"attach",int.class,volumeClass),select=method(control,"select",String.class),state=method(control,"status"),detach=method(control,"detach");
+        android.media.MediaPlayer player=new android.media.MediaPlayer(),next=null;
+        android.media.audiofx.Equalizer competitor=null;
+        try{
+            player.setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            player.setDataSource(tone.getAbsolutePath());player.prepare();player.setLooping(true);player.start();
+            Object gain=java.lang.reflect.Proxy.newProxyInstance(app.getClassLoader(),new Class[]{volumeClass},(p,m,a)->{player.setVolume((float)a[0],(float)a[0]);return null;});
+            attach.invoke(effects,player.getAudioSessionId(),gain);check(state.invoke(effects).equals("off"),"original did not bypass effect");
+            for(String id:new String[]{"vocal","bass","soft","commute","night"}){
+                select.invoke(effects,id);check(state.invoke(effects).equals("active"),"device could not activate "+id+" effect");
+            }
+            int position=player.getCurrentPosition();Thread.sleep(700);check(player.isPlaying()&&player.getCurrentPosition()!=position,"effect selection interrupted native audio");
+            competitor=new android.media.audiofx.Equalizer(100,player.getAudioSessionId());Thread.sleep(150);
+            check(competitor.hasControl(),"higher priority test effect did not gain control");
+            check((boolean)method(control,"check").invoke(effects)&&state.invoke(effects).equals("unavailable"),"lost hardware control reported false success");
+            competitor.release();competitor=null;select.invoke(effects,"commute");check(state.invoke(effects).equals("active"),"effect did not recover control");
+            player.pause();detach.invoke(effects);check(state.invoke(effects).equals("pending"),"pause failed to release effect");
+            attach.invoke(effects,player.getAudioSessionId(),gain);player.start();check(state.invoke(effects).equals("active"),"resume failed to restore effect");
+            detach.invoke(effects);player.stop();
+            next=new android.media.MediaPlayer();next.setDataSource(tone.getAbsolutePath());next.prepare();
+            android.media.MediaPlayer nextPlayer=next;
+            Object nextGain=java.lang.reflect.Proxy.newProxyInstance(app.getClassLoader(),new Class[]{volumeClass},(p,m,a)->{nextPlayer.setVolume((float)a[0],(float)a[0]);return null;});
+            check(next.getAudioSessionId()!=player.getAudioSessionId(),"new test player must have a new session");
+            attach.invoke(effects,next.getAudioSessionId(),nextGain);next.start();check(state.invoke(effects).equals("active"),"next song lost chosen effect");
+            select.invoke(effects,"original");check(state.invoke(effects).equals("off"),"original did not release native effect");
+            out.putString("sound","5 real session EQ curves applied/read back; audio advanced; control loss fell back; pause/resume/new-session/original succeeded");
+        }finally{
+            detach.invoke(effects);if(competitor!=null)competitor.release();player.release();if(next!=null)next.release();tone.delete();
+        }
+    }
+    void identity()throws Exception{
+        try(InputStream setup=app.getAssets().open("SideASetup.txt")){throw new Exception("Identity fixture must not contain an enrollment ticket");}
+        catch(FileNotFoundException expected){}
+        String seed;try(InputStream input=app.getAssets().open("SideARecoverySeed.txt")){ByteArrayOutputStream raw=new ByteArrayOutputStream();byte[] buffer=new byte[128];int count;while((count=input.read(buffer))!=-1)raw.write(buffer,0,count);seed=raw.toString("US-ASCII").trim();}
+        check(seed.equals("sidea-synthetic-recovery-seed-for-emulator-050"),"Identity fixture requires the documented synthetic seed");
+        String androidId=android.provider.Settings.Secure.getString(app.getContentResolver(),android.provider.Settings.Secure.ANDROID_ID);
+        check(androidId!=null&&androidId.matches("[0-9a-fA-F]{1,16}")&&!androidId.matches("0+"),"Emulator has no stable ID");
+        String actual=(String)call(central,"recovery",new Class[]{Context.class},app);
+        check(actual.equals(call(central,"recovery",new Class[]{Context.class},app)),"Recovery changed between calls");
+        javax.crypto.Mac mac=javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(new javax.crypto.spec.SecretKeySpec(seed.getBytes(StandardCharsets.US_ASCII),"HmacSHA256"));
+        byte[] old=mac.doFinal(("SideA recovery v1|"+androidId.toLowerCase(java.util.Locale.ROOT)).getBytes(StandardCharsets.UTF_8));
+        StringBuilder oldValue=new StringBuilder();for(byte b:old)oldValue.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
+        boolean car=app.getPackageName().equals("studio.sidea.car");
+        if(car){
+            check(!actual.equals(oldValue.toString()),"Car identity collided with old phone namespace");
+            mac.init(new javax.crypto.spec.SecretKeySpec(seed.getBytes(StandardCharsets.US_ASCII),"HmacSHA256"));
+            byte[] changed=mac.doFinal(("SideA recovery v1|car|"+androidId.toLowerCase(java.util.Locale.ROOT)).getBytes(StandardCharsets.UTF_8));
+            StringBuilder expected=new StringBuilder();for(byte b:changed)expected.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
+            check(actual.equals(expected.toString()),"Car recovery namespace differs from specification");
+        }else check(actual.equals(oldValue.toString()),"Phone recovery is no longer byte-compatible with v1");
+        out.putString("identity-package",app.getPackageName());
+        out.putString("identity-digest",digest(actual));
+        out.putString("android-id-digest",digest(androidId));
+        out.putString("identity",car?"Stable car namespace, isolated from phone v1":"Phone derivation byte-compatible with existing v1");
+    }
     @Override public void onStart(){
         try{
             check("ranchu".equals(Build.HARDWARE)||"goldfish".equals(Build.HARDWARE),"Fixture instrumentation is restricted to emulators");
@@ -237,7 +311,7 @@ public final class CloudProbe extends Instrumentation {
             library=app.getClassLoader().loadClass("studio.sidea.android.Library");central=app.getClassLoader().loadClass("studio.sidea.android.CentralCatalog");
             String mode=opts.getString("mode","unit");
             if(!mode.equals("seed")){cloud=app.getClassLoader().loadClass("studio.sidea.android.CloudLibrary");merge=app.getClassLoader().loadClass("studio.sidea.android.LibraryMerge");}
-            switch(mode){case "unit":tests();persistenceTests();break;case "seed":seedOld();break;case "upgrade":upgrade();break;case "restore":restore();break;case "offline":offline();break;case "conflict":conflict();break;case "sources":sources();break;case "checkpoint":startCloud();waitBackup();evidence.edit().putString("expected",capture().toString()).commit();out.putString("checkpoint","current library and source preference acknowledged");break;default:throw new Exception("unknown mode");}
+            switch(mode){case "identity":identity();break;case "sound":sound();break;case "unit":tests();persistenceTests();break;case "seed":seedOld();break;case "upgrade":upgrade();break;case "restore":restore();break;case "offline":offline();break;case "conflict":conflict();break;case "sources":sources();break;case "checkpoint":startCloud();waitBackup();evidence.edit().putString("expected",capture().toString()).commit();out.putString("checkpoint","current library and source preference acknowledged");break;default:throw new Exception("unknown mode");}
             try(FileOutputStream file=new FileOutputStream(evidenceFile)){file.write(new JSONObject(evidence.getAll()).toString().getBytes(StandardCharsets.UTF_8));}
             out.putString("result","PASS");finish(Activity.RESULT_OK,out);
         }catch(Throwable failure){Throwable t=failure;while(t.getCause()!=null)t=t.getCause();out.putString("result","FAIL");out.putString("detail",t.getClass().getSimpleName()+": "+t.getMessage());finish(Activity.RESULT_CANCELED,out);}

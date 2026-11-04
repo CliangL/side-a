@@ -1128,3 +1128,77 @@ h3 {
 #searchScopes { display: flex; width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none; margin-bottom: 18px; gap: 2px; padding: 3px; border-radius: 20px; background: var(--wash); }
 #searchScopes button { flex: none; white-space: nowrap; min-width: 55px; min-height: 36px; padding: 4px 12px; border-radius: 18px; }
 #searchScopes button[aria-pressed='true'] { background: var(--raised); color: var(--teal); font-weight: 600; }
+
+/* Scene effects share the native player's actual preset and capability state. */
+.sound-intro{color:var(--sub);margin:0 0 16px;font-size:14px}
+.sound-grid{display:grid;gap:9px}
+.sound-preset{display:flex;align-items:center;gap:13px;min-height:73px;padding:12px 14px;text-align:left;border:1px solid var(--line);border-radius:16px;background:var(--wash)}
+.sound-preset .txt{flex:1}.sound-preset .txt strong{font-size:17px}.sound-preset .txt small{white-space:normal;line-height:1.4;font-size:12px}
+.sound-icon{width:36px;flex:none;color:var(--sub)}.sound-check{width:23px;flex:none}
+.sound-preset.selected{border-color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal)}
+.sound-preset.selected .sound-icon,.sound-preset.selected .sound-check{color:var(--teal)}
+.sound-status{color:var(--sub);font-size:13px;margin:14px 2px 0;line-height:1.5}
+
+/* Explicit car distribution mode. Phone landscape keeps the phone interface. */
+html.car{color-scheme:dark;--paper:#121b1c;--ink:#f2f1e6;--sub:#a7b5b2;--line:#ffffff16;--wash:#243332;--glass:#273c3894;--raised:#344a44;--teal:#b9e1c7;--rose:#efaca1;--shadow:#0004}
+.car body{font-size:18px;background:#10191a}
+.car #shell{grid-template-columns:94px minmax(0,1fr) clamp(310px,29vw,460px);grid-template-rows:minmax(0,1fr);gap:0;background:radial-gradient(ellipse at 75% 0,#354c4255,transparent 58%),linear-gradient(125deg,#162020,#111b1c)}
+.car button{min-height:56px}.car button:focus-visible{outline:3px solid #c7e9cd;outline-offset:3px}
+.car #main{padding:10px 0 24px;min-width:0;scrollbar-width:thin;scrollbar-color:#ffffff20 transparent}
+.car #carNav{display:flex;flex-direction:column;align-items:stretch;gap:20px;padding:20px 10px;border-right:1px solid #ffffff0c;overflow-y:auto;scrollbar-width:none}
+.car-brand{text-align:center;display:grid;justify-items:center;gap:6px;color:#d9e7d8;padding:5px 0 6px}
+.car-brand .side{font-size:42px;line-height:1}.car-brand>span:last-child{font-size:9px;letter-spacing:2.4px;font-weight:700}
+.car-nav-items{display:grid;gap:7px}.car-nav-items>button{border-radius:18px;display:grid;place-content:center;justify-items:center;gap:5px;min-height:74px;font-size:13px;color:#a2b2ad;position:relative}
+.car-nav-items .ic{font-size:22px}.car-nav-items>button.sel{color:#d4efd8;background:linear-gradient(135deg,#bfdcc519,#688a721a);box-shadow:inset 0 0 0 1px #e2f7e212}
+.car-nav-items>button.sel:before{content:'';position:absolute;left:-10px;top:28%;bottom:28%;width:3px;border-radius:4px;background:#bee3c6}
+.car-page{padding:10px 26px 12px;max-width:1250px;margin:auto}
+.car-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 24px;min-height:66px}
+.car-header .caps{font-size:9px;letter-spacing:2px;color:#9cab9e;margin-bottom:8px}
+.car-header h1{font-size:30px;line-height:1.2;letter-spacing:-.7px;font-weight:650}.car-header .hint{margin-top:8px;font-size:15px}
+.car .round{height:56px;width:56px;min-width:56px;background:#ffffff08;border:1px solid #ffffff14;box-shadow:none}
+.car .glass,.car .searchbar{border-color:#ffffff1a;background:linear-gradient(130deg,#ffffff0d,#ffffff04);box-shadow:none}
+.car-mixes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.car-mix{position:relative;height:clamp(142px,23vh,190px);border-radius:19px;overflow:hidden;text-align:left;background:#263c36;border:1px solid #ffffff1c;isolation:isolate}
+.car-mix-art{position:absolute;inset:0;filter:saturate(.6);opacity:.66}
+.car-mix-shade{position:absolute;inset:0;background:linear-gradient(0deg,#122422f2,transparent 120%)}
+.car-mix-caption{position:absolute;bottom:16px;left:16px;right:14px;display:grid;gap:7px;color:#faf5e8}
+.car-mix-caption small{font-size:9px;letter-spacing:1.3px;color:#e0e9d6c9}.car-mix-caption strong{font-size:21px;line-height:1.25;font-weight:600}.car-mix-caption>span{margin-top:7px;color:#e7e9d3}
+.car-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:15px 0 4px}.car h2{font-size:22px;letter-spacing:-.4px}
+.car .row{min-height:76px;border-bottom:1px solid #ffffff08;gap:8px;padding:7px 0}.car .row>.trackpick{min-height:60px;gap:14px}.car .thumb{width:56px;height:56px;border-radius:11px}
+.car .txt strong{font-size:19px;font-weight:550}.car .txt small{font-size:14px;line-height:1.5}.car .recordnote{font-size:12px;line-height:1.5}
+.car .row .icbtn,.car .icbtn{min-width:56px;min-height:56px}.car .row.now .txt strong{color:#c9ead0}
+.car .pill{min-height:56px;padding:10px 16px;display:inline-flex;gap:8px;align-items:center;justify-content:center;font-size:15px;border-radius:15px;background:#ffffff08;white-space:nowrap}
+.car .primary{background:#d3e5c9;color:#213d31}.car .subtle{font-size:15px;min-width:56px}
+.car .section,.car .pad,.car .bar{max-width:none;margin-left:26px;margin-right:26px}.car .pad{padding:0}.car .section{margin-top:18px}
+.car .bar{min-height:70px;padding:0}.car .bar h2{font-size:24px}.car .back{font-size:16px}
+.car .searchbar{height:58px;min-height:58px;width:calc(100% - 52px);margin:0 26px;border-radius:18px;padding:0 18px;font-size:18px;gap:13px}
+.car #searchScopes{border-radius:16px;gap:4px;width:100%;padding:4px;margin-bottom:18px;background:#ffffff06}
+.car #searchScopes button{min-height:56px;font-size:16px;border-radius:12px;padding:8px 13px;flex:1;min-width:72px}
+.car #searchScopes button[aria-pressed='true']{background:#d4e7ca18;color:#d2ecd0}
+.car #searchResults .row:has(.recordnote){min-height:82px}.car .search-pager{font-size:15px}
+.car-collection-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 18px}
+.car .field{min-height:56px;border:1px solid #ffffff18;background:#ffffff08}.car .field input{font-size:18px}
+.car-playlists{display:grid;gap:12px}.car-list-entry{display:flex;align-items:center;gap:18px;border-radius:18px;min-height:100px;padding:13px;background:#ffffff05;border:1px solid #ffffff0d;text-align:left}.car-list-entry .txt{flex:1}.car-list-cover{width:74px;height:74px;border-radius:11px;flex:none}
+.car-empty-list{padding:44px 15px;display:grid;justify-items:center;text-align:center;gap:18px;color:var(--sub)}.car-empty-list>.ic{width:44px;height:44px}.car-empty-list h2{color:var(--ink)}
+.car .preferences h2{font-size:17px;color:var(--sub);font-weight:500;margin:24px 0 7px}.car .preferences .setting{min-height:72px;font-size:18px}.car .setting .ic{margin-left:8px;font-size:16px}.car input[type=checkbox]{width:26px;height:26px;margin:15px}
+.car #carNow{margin:14px 14px 14px 0;padding:14px 22px 16px;display:flex;flex-direction:column;align-items:stretch;min-height:0;min-width:0;overflow:auto;border:1px solid #ffffff15;border-radius:24px;background:linear-gradient(160deg,#bfd2bd14,#ffffff04 70%);box-shadow:0 12px 40px #0002;scrollbar-width:none}
+.car-now-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:56px;flex:none}.car-now-head .caps{letter-spacing:1.8px;font-size:10px;color:#bbc9bb}.car-now-mark{font:italic 20px Georgia;color:#b7c6b9}
+.car-cover-button{display:flex;justify-content:center;align-items:center;width:100%;flex:1;min-height:110px!important;margin:5px auto 12px}
+.car-cover{aspect-ratio:1;width:min(100%,max(110px,calc(100dvh - 400px)));max-height:100%;border-radius:13px;box-shadow:0 15px 27px #0006;border:1px solid #ffffff20}
+.car-song-title{flex:none;min-width:0}.car-song-title h2{font-size:25px;line-height:1.25;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.car-song-title p{font-size:16px;color:#b3c3b9;line-height:1.5;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.car-quality{display:flex;align-items:center;gap:5px;color:#c5d3c5;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.car-quality .ic{font-size:10px}
+.car-progress-wrap{flex:none;margin-top:4px}.car #carNow .progress{height:56px}.car #carNow .progress::-webkit-slider-thumb{width:13px;height:13px;margin-top:-5px}.car #carNow .times{font-size:12px;color:#b5c2b9}
+.car-controls{display:flex;align-items:center;justify-content:space-between;gap:3px;margin:10px 0;flex:none}.car-controls>button{width:56px;height:60px;min-width:48px;display:grid;place-items:center;font-size:24px}.car-controls .mode{font-size:20px;color:var(--sub)}.car-controls .mode.sel{color:var(--teal)}.car-controls>.car-play{width:72px;height:72px;border-radius:50%;background:#dce8d2;color:#1b392d;box-shadow:0 4px 18px #0002}
+.car-now-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;border-top:1px solid #ffffff12;padding-top:6px;flex:none}.car-now-tools button{display:flex;align-items:center;justify-content:center;gap:7px;font-size:14px;color:#c2d1c5}.car-now-tools .ic{font-size:18px}
+.car-idle-art{height:min(260px,30vh);min-height:100px;position:relative;margin:8px 0 24px;isolation:isolate;display:grid;place-items:center;flex:1}.car-idle-art .vinyl{position:relative;inset:auto;height:min(100%,240px);width:auto;aspect-ratio:1;opacity:.65;grid-area:1/1}.car-idle-art .side{grid-area:1/1;z-index:1;font-size:30px;color:#e9e6d5}
+.car-play-error{font-size:13px;color:#ffd7c8;flex:none;line-height:1.4;padding-top:8px}.car-play-error .pill{margin-top:6px}.car-load{font-size:13px;color:var(--sub);padding-top:7px;flex:none}
+.car #shade{align-items:center;padding:24px;background:#061416aa;backdrop-filter:blur(10px)}.car #sheet{width:min(730px,100%);max-height:calc(100% - 16px);padding:20px 26px 24px;border-radius:24px;border:1px solid #ffffff20;background:linear-gradient(135deg,#2a3c38,#182626);box-shadow:0 15px 80px #0007}
+.car #sheet .handle{display:none}.car .modalhead h2{font-size:24px}.car .modalhead button{min-height:56px;min-width:56px}.car .sheetrow{min-height:64px;font-size:18px}.car .hint{font-size:15px;line-height:1.5}.car .empty{font-size:17px}.car .queueitem{min-height:76px}.car .queueitem .trackpick{min-height:62px}.car .queueitem .icbtn{min-width:56px}.car .sound-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.car .sound-preset{min-height:98px;padding:16px;gap:9px}.car .sound-preset .txt strong{font-size:19px}.car .sound-preset .txt small{font-size:13px}.car .sound-intro{font-size:16px}.car .sound-status{font-size:15px}
+.car-lyrics-page{height:100%;display:flex;flex-direction:column;padding:10px 26px 0}.car-lyrics-page .car-header{flex:none;margin-bottom:10px}.car-lyrics{position:relative;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:36px 0 32vh;mask-image:linear-gradient(transparent,#000 6%,#000 87%,transparent);scrollbar-width:none}.car-lyric-line{font-size:28px;line-height:1.45;font-weight:550;color:#8fa39b;margin:0 0 24px;transition:color .25s}.car-lyric-line.active{color:#eaf3df;font-weight:700}.car-lyric-line small{display:block;font-size:17px;font-weight:400;margin-top:8px}
+.car #notice{font-size:16px;bottom:7%;max-width:70%;border:1px solid #ffffff20;padding:13px 22px}
+@media (max-width:1100px){.car #shell{grid-template-columns:82px minmax(0,1fr) 310px}.car #carNav{padding-inline:8px}.car .car-page{padding-inline:20px}.car .section,.car .bar,.car .pad{margin-inline:20px}.car .searchbar{width:calc(100% - 40px);margin-inline:20px}.car #carNow{padding-inline:18px}.car-mixes{gap:10px}.car-mix-caption{left:12px;right:10px}.car-mix-caption strong{font-size:19px}.car-header h1{font-size:28px}.car .car-collection-actions{gap:8px}.car .car-collection-actions .pill{padding-inline:12px}.car #searchScopes button{padding-inline:10px;font-size:15px;min-width:68px}}
+@media (max-height:620px){.car #carNav{gap:12px;padding-top:10px}.car-nav-items>button{min-height:68px}.car .car-header{margin-bottom:18px;min-height:60px}.car #carNow{margin-block:10px;padding-top:6px;padding-bottom:10px}.car .car-cover-button{margin-bottom:8px}.car .car-song-title h2{font-size:23px}.car .car-song-title p{font-size:15px}.car .car-controls{margin:6px 0}.car .car-controls>.car-play{width:64px;height:64px}.car .car-now-tools{padding-top:2px}.car .car-mix{height:146px}.car .car-brand .side{font-size:36px}.car .sound-preset{min-height:84px}.car #sheet{padding-block:14px}}
+@media (max-height:450px){.car .car-cover-button,.car .car-idle-art{display:none}.car .car-brand{display:none}.car #carNav{padding-block:4px}.car .car-nav-items{gap:0}.car .car-nav-items>button{min-height:56px;display:flex;justify-content:center;gap:8px}.car .car-nav-items .ic{font-size:17px}.car .car-nav-items>button>span{font-size:11px}.car .car-header .caps{display:none}.car .car-header{min-height:56px;margin-bottom:8px}.car .car-lyric-line{font-size:23px}}
+
+.car-controls button.mode{display:flex;flex-direction:column;gap:3px;justify-content:center}.car-controls .mode small{font-size:10px;line-height:1}
+@media (min-height:451px) and (max-height:520px){.car .car-cover-button{min-height:96px!important}.car .car-cover{width:96px}}

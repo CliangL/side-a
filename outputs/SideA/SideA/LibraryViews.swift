@@ -231,6 +231,8 @@ struct AddToPlaylistView: View {
 }
 
 struct SettingsView: View {
+    @EnvironmentObject var player: Player
+    @State private var soundSheet = false
     @EnvironmentObject var library: LibraryStore
     @State private var cacheBytes: Int?
     @State private var resetPrompt = false
@@ -238,6 +240,11 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("播放") {
+                Button { soundSheet = true } label: {
+                    HStack { Label("音效", systemImage: "slider.horizontal.3"); Spacer(); Text(player.soundPreset.title).foregroundStyle(.secondary) }
+                }.accessibilityIdentifier("settings.sound")
+            }
             Section("缓存") {
                 LabeledContent("已用空间", value: cacheBytes.map { $0 == 0 ? "0 KB" : ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "…")
                 Button("清理缓存") {
@@ -262,6 +269,7 @@ struct SettingsView: View {
             let size = await Task.detached { GDClient.shared.cacheSize() }.value
             if !clearing && cacheBytes == nil { cacheBytes = size }
         }
+        .sheet(isPresented: $soundSheet) { SoundEffectsView() }
         .confirmationDialog("重置听歌偏好？",isPresented: $resetPrompt) {
             Button("重置偏好",role: .destructive) { library.resetPreferences() }
             Button("取消",role: .cancel) {}

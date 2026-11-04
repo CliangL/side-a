@@ -69,6 +69,20 @@ final class Player: ObservableObject {
     @Published var losslessOnly = false {
         didSet { LocalStorage.defaults.set(losslessOnly, forKey: "sidea.losslessOnly"); if !applyingCloud { onPersist?() } }
     }
+    @Published var soundPreset: SoundPreset = .original {
+        didSet {
+            guard soundPreset != oldValue else { return }
+            LocalStorage.defaults.set(soundPreset.rawValue, forKey: "sidea.soundPreset")
+            soundTask?.cancel()
+            soundStatus = soundPreset == .original ? "原声 · 未启用音效" : "播放时应用"
+            if let item = engine.currentItem {
+                let identity = token
+                soundTask = Task { [weak self] in await self?.configureSound(item, identity: identity) }
+            }
+            if !applyingCloud { onPersist?() }
+        }
+    }
+    @Published private(set) var soundStatus = "原声 · 未启用音效"
     @Published private(set) var sleepEnd: Date?
 
     var onPersist: (() -> Void)?
@@ -80,6 +94,9 @@ final class Player: ObservableObject {
     private var activationTask: Task<Void, Never>?
     private var artTask: Task<Void, Never>?
     private var kuwoLoader: KuwoResourceLoader?
+    private var soundTask: Task<Void, Never>?
+    private var soundTap: SoundTap?
+    private var soundWaitingSince: TimeInterval?
     private var sleepTask: Task<Void, Never>?
     private var stallTask: Task<Void, Never>?
     private var token = UUID()
@@ -110,6 +127,8 @@ final class Player: ObservableObject {
         preferLossless = defaults.object(forKey: "sidea.preferLossless") as? Bool ?? true
         losslessOnly = defaults.bool(forKey: "sidea.losslessOnly")
         cellularDataSaver = defaults.object(forKey: "sidea.cellularDataSaver") as? Bool ?? true
+        soundPreset = SoundPreset(rawValue: defaults.string(forKey: "sidea.soundPreset") ?? "") ?? .original
+        soundStatus = soundPreset == .original ? "原声 · 未启用音效" : "播放时应用"
         networkPath.start(queue: DispatchQueue(label: "sidea.network-path", qos: .utility))
         mode = PlaybackMode(rawValue: defaults.string(forKey: "sidea.playMode") ?? "") ?? .sequence
         if let data = defaults.data(forKey: "sidea.resume"), let saved = try? JSONDecoder().decode(Resume.self, from: data),
@@ -134,7 +153,7 @@ final class Player: ObservableObject {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         for n in notices { NotificationCenter.default.removeObserver(n) }
         for (c,t) in remoteTargets { c.removeTarget(t) }
-        loadTask?.cancel(); activationTask?.cancel(); artTask?.cancel(); sleepTask?.cancel(); stallTask?.cancel()
+        loadTask?.cancel(); activationTask?.cancel(); artTask?.cancel(); sleepTask?.cancel(); stallTask?.cancel(); soundTask?.cancel()
     }
     func play(_ tracks: [Track], at index: Int = 0) {
         guard tracks.indices.contains(index) else { return }
@@ -252,6 +271,8 @@ final class Player: ObservableObject {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver); self.endObserver = nil }
         intentToPlay = false; lastActiveTick = nil
         engine.pause(); engine.replaceCurrentItem(with: nil)
+        soundTask?.cancel(); soundTask = nil; soundTap = nil; soundWaitingSince = nil
+        soundStatus = soundPreset == .original ? "原声 · 未启用音效" : "播放时应用"
         kuwoLoader?.invalidate(); kuwoLoader = nil
         if !keepingAudioSession { releaseAudioSession() }
         started = false; listened = 0; duration = 0; elapsed = 0; isPlaying = false; isLoading = false
@@ -288,10 +309,52 @@ final class Player: ObservableObject {
                 let item = AVPlayerItem(asset: asset)
                 item.preferredForwardBufferDuration = 8
                 item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
+                await configureSound(item, identity: identity)
+                guard token == identity, !Task.isCancelled else { return }
                 install(item, asset: asset, identity: identity)
             } catch {
                 guard token == identity, !Task.isCancelled else { return }
                 fail(error)
+            }
+        }
+    }
+    private func configureSound(_ item: AVPlayerItem, identity: UUID) async {
+        guard token == identity, !Task.isCancelled else { return }
+        if soundPreset == .original {
+            item.audioMix = nil; soundTap = nil; soundWaitingSince = nil
+            soundStatus = "原声 · 未启用音效"; return
+        }
+        soundStatus = "正在准备音效"
+        do {
+            let tracks = try await item.asset.loadTracks(withMediaType: .audio)
+            guard token == identity, !Task.isCancelled else { return }
+            // Re-read after loading: selecting another scene must not apply a stale scene.
+            guard soundPreset != .original else {
+                item.audioMix = nil; soundTap = nil; soundStatus = "原声 · 未启用音效"; return
+            }
+            guard let audio = tracks.first else { throw MusicFailure.message("没有可处理的音轨") }
+            let effect = try SoundTap(preset: soundPreset)
+            item.audioMix = effect.mix(track: audio)
+            soundTap = effect; soundWaitingSince = nil
+            soundStatus = "等待播放应用音效"
+        } catch {
+            guard token == identity, !Task.isCancelled else { return }
+            item.audioMix = nil; soundTap = nil; soundWaitingSince = nil
+            soundStatus = "当前音源暂不支持音效，继续原声播放"
+        }
+    }
+    private func updateSoundStatus() {
+        guard soundPreset != .original, let soundTap else { return }
+        if soundTap.processor.formatStatus.load(ordering: .acquiring) < 0 {
+            soundStatus = "当前音源暂不支持音效，继续原声播放"
+        } else if soundTap.processor.framesProcessed.load(ordering: .relaxed) > 0 {
+            soundStatus = soundPreset.title + " · 已开启"
+            soundWaitingSince = nil
+        } else if isPlaying {
+            let now = ProcessInfo.processInfo.systemUptime
+            if soundWaitingSince == nil { soundWaitingSince = now }
+            if now - (soundWaitingSince ?? now) > 4 {
+                soundStatus = "当前音源暂不支持音效，继续原声播放"
             }
         }
     }
@@ -437,6 +500,7 @@ final class Player: ObservableObject {
         updateNowPlaying()
     }
     private func tick() {
+        updateSoundStatus()
         guard let item = engine.currentItem, item.status == .readyToPlay else { return }
         let p = engine.currentTime().seconds, total = item.duration.seconds
         if p.isFinite { elapsed = max(0,p) }
@@ -458,13 +522,14 @@ final class Player: ObservableObject {
     }
     var cloudSnapshot: CloudPlayback {
         CloudPlayback(mode: mode.rawValue, preferLossless: preferLossless, cellularDataSaver: cellularDataSaver,
-                      losslessOnly: losslessOnly, resume: CloudPlayback.Resume(queue: queue, index: currentIndex, position: elapsed))
+                      losslessOnly: losslessOnly, resume: CloudPlayback.Resume(queue: queue, index: currentIndex, position: elapsed), soundPreset: soundPreset.rawValue)
     }
 
     func restoreCloud(_ saved: CloudPlayback) {
         applyingCloud = true
         defer { applyingCloud = false }
         mode = PlaybackMode(rawValue: saved.mode) ?? .sequence
+        soundPreset = SoundPreset(rawValue: saved.soundPreset ?? "") ?? .original
         preferLossless = saved.preferLossless; cellularDataSaver = saved.cellularDataSaver; losslessOnly = saved.losslessOnly
         // Cloud restoration must never interrupt a song the listener has already started.
         if !intentToPlay && !isPlaying && !isLoading, cloudSnapshot.resume != saved.resume {

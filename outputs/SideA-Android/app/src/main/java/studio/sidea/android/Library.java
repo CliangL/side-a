@@ -43,6 +43,7 @@ final class Library {
         SharedPreferences prefs=ctx.getSharedPreferences("sidea.settings",Context.MODE_PRIVATE);
         for(String key:CLOUD_PREFERENCES)if(prefs.contains(key))put(settings,key,prefs.getBoolean(key,false));
         if(prefs.contains("searchSource"))put(settings,"searchSource",MusicSource.scope(prefs.getString("searchSource","all")));
+        if(prefs.contains("soundPreset"))put(settings,"soundPreset",SoundPreset.normalize(prefs.getString("soundPreset",SoundPreset.ORIGINAL)));
         return LibraryMerge.copy(object("schema",1,"platform","android","library",local,"settings",settings));
     }
     private static JSONObject cloudBase(Context ctx)throws JSONException{
@@ -61,6 +62,7 @@ final class Library {
         SharedPreferences.Editor options=ctx.getSharedPreferences("sidea.settings",Context.MODE_PRIVATE).edit();
         for(String key:CLOUD_PREFERENCES){if(settings.has(key))options.putBoolean(key,settings.getBoolean(key));else options.remove(key);}
         if(settings.has("searchSource"))options.putString("searchSource",MusicSource.scope(settings.getString("searchSource")));else options.remove("searchSource");
+        if(settings.has("soundPreset"))options.putString("soundPreset",SoundPreset.normalize(settings.getString("soundPreset")));else options.remove("soundPreset");
         if(!options.commit())throw new java.io.IOException("偏好暂时无法保存");
         // Local changes and the remote base advance in one durable write, even if the process stops before PUT.
         if(!disk(ctx).edit().putString("collection",clean.toString()).putString("cloudBase",remote.toString()).putLong("cloudRevision",remoteRevision)

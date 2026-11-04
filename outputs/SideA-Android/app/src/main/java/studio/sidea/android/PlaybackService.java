@@ -24,7 +24,7 @@ public final class PlaybackService extends Service {
     private static final Map<String,String> commands = new ConcurrentHashMap<>();
     private static final Map<String,CompletableFuture<JSONObject>> acknowledgements=new ConcurrentHashMap<>();
     private static volatile JSONObject snapshot;
-    private static final String[] STATE_FIELDS={"queue","track","index","playing","loading","elapsed","duration","quality","error","mode","sleepEnd","embeddedCoverId"};
+    private static final String[] STATE_FIELDS={"queue","track","index","playing","loading","elapsed","duration","quality","error","mode","sleepEnd","embeddedCoverId","sound"};
     private static volatile Embedded embedded;
     private static final class Embedded {
         final String id, url;
@@ -70,7 +70,8 @@ public final class PlaybackService extends Service {
         int i=Math.max(0,Math.min(q.length()-1,saved.optInt("index")));
         return object("queue",q,"index",i,"track",q.optJSONObject(i),"playing",false,"loading",false,
             "elapsed",saved.optDouble("elapsed",0),"duration",saved.optDouble("duration",0),"mode",saved.optString("mode","sequence"),
-            "quality","等待音源","error","","sleepEnd",0,"embeddedCoverId","");
+            "quality","等待音源","error","","sleepEnd",0,"embeddedCoverId","",
+            "sound",AndroidSoundEffects.pending(c.getSharedPreferences(SETTINGS,0).getString("soundPreset",SoundPreset.ORIGINAL)));
     }
     public static String embeddedCover(String id) {
         Embedded image=embedded;
@@ -87,6 +88,7 @@ public final class PlaybackService extends Service {
     private AudioManager audio;
     private AudioFocusRequest focus;
     private MediaPlayer engine;
+    private final SoundEffects sound=AndroidSoundEffects.create();
     private volatile boolean destroyed;
     private volatile boolean foreground;
     private long generation;
@@ -130,6 +132,7 @@ public final class PlaybackService extends Service {
             queueSnapshot=new JSONArray(queue);
             index=Math.max(0,Math.min(queue.size()-1,saved.optInt("index")));
             elapsed=saved.optDouble("elapsed",0); duration=saved.optDouble("duration",0); mode=saved.optString("mode","sequence");
+            sound.select(getSharedPreferences(SETTINGS,0).getString("soundPreset",SoundPreset.ORIGINAL));
             publish(false); owner.post(ticker);
         });
     }
@@ -210,6 +213,20 @@ public final class PlaybackService extends Service {
                 sleepEnd=minutes>0 ? System.currentTimeMillis()+Math.min(1440,minutes)*60000L : 0;
                 publish(false); break;
             }
+            case "sound": {
+                String requested=args.optString("preset",SoundPreset.ORIGINAL);
+                if(!requested.equals(SoundPreset.normalize(requested)))throw new IllegalArgumentException("未知音效");
+                synchronized(Library.class){
+                    SharedPreferences prefs=getSharedPreferences(SETTINGS,0);
+                    String previous=prefs.getString("soundPreset",SoundPreset.ORIGINAL);
+                    if(!prefs.edit().putString("soundPreset",requested).commit()){
+                        prefs.edit().putString("soundPreset",previous).commit();
+                        throw new IllegalStateException("音效暂时无法保存");
+                    }
+                    Library.preferencesChanged(this);
+                }
+                sound.select(requested); publish(false); break;
+            }
             case "quality": {
                 synchronized(Library.class){
                 SharedPreferences.Editor prefs=getSharedPreferences(SETTINGS,0).edit();
@@ -254,6 +271,7 @@ public final class PlaybackService extends Service {
         updatePosition();
         boolean was=wantsPlay; wantsPlay=false; resumeOnFocus=interrupted && was;
         if (engine!=null && ready) try { if(engine.isPlaying()) engine.pause(); } catch(RuntimeException ignored) {}
+        sound.detach();
         playing=false; loading=false; lastTick=0;
         if (!interrupted) abandonFocus();
         persist(); publish(true);
@@ -278,6 +296,7 @@ public final class PlaybackService extends Service {
         persist(); publish(true); resolve();
     }
     private void releaseEngine() {
+        sound.detach();
         generation++;
         if(lookup!=null) lookup.cancel(true);
         if(artLookup!=null) artLookup.cancel(true);
@@ -370,6 +389,9 @@ public final class PlaybackService extends Service {
             if(!hasFocus) {fail("暂时无法获得音频焦点，请稍后重试");return;}
         }
         try {
+            sound.select(getSharedPreferences(SETTINGS,0).getString("soundPreset",SoundPreset.ORIGINAL));
+            MediaPlayer target=engine;
+            sound.attach(target.getAudioSessionId(),gain->target.setVolume(gain,gain));
             engine.start(); loading=true; lastTick=0; lastPosition=engine.getCurrentPosition()/1000d;
             lastProgress=SystemClock.elapsedRealtime(); publish(true);
         } catch(RuntimeException e) { recover("未能开始播放，请重试"); }
@@ -425,6 +447,10 @@ public final class PlaybackService extends Service {
         long now=SystemClock.elapsedRealtime();
         if(sleepEnd>0 && System.currentTimeMillis()>=sleepEnd) { sleepEnd=0;pause(false); }
         updatePosition();
+        String selected=SoundPreset.normalize(getSharedPreferences(SETTINGS,0).getString("soundPreset",SoundPreset.ORIGINAL));
+        boolean soundChanged=!selected.equals(sound.preset());
+        if(soundChanged)sound.select(selected);
+        if(sound.check()||soundChanged)publish(false);
         if(wantsPlay && now-lastProgress>28000) recover("播放连接超时");
         if(wantsPlay && now-lastSaved>6000) {persist();lastSaved=now;}
         if(wantsPlay) publish(false);
@@ -439,7 +465,7 @@ public final class PlaybackService extends Service {
         Embedded cover=embedded;
         snapshot=object("queue",queueSnapshot,"track",current(),"index",index,"playing",playing,"loading",loading,
                 "elapsed",elapsed,"duration",duration,"quality",quality,"error",error,"mode",mode,"sleepEnd",sleepEnd,
-                "embeddedCoverId",cover==null?"":cover.id);
+                "embeddedCoverId",cover==null?"":cover.id,"sound",AndroidSoundEffects.state(sound));
         if(system) updateSystem(true);
     }
 

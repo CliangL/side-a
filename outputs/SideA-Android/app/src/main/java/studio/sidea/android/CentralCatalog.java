@@ -73,8 +73,9 @@ final class CentralCatalog {
         }
         return Catalog.read(request.getInputStream(),pairing?65536:8*1024*1024);
     }
-    private static String deviceName(){
-        return (Build.MANUFACTURER+" "+Build.MODEL).trim();
+    private static String deviceName(Context ctx){
+        String name=(Build.MANUFACTURER+" "+Build.MODEL).trim();
+        return "studio.sidea.car".equals(ctx.getPackageName()) ? name+" · Side A 车机版" : name;
     }
 
     private static String installation(Context ctx) throws IOException {
@@ -102,7 +103,7 @@ final class CentralCatalog {
             if(!ticket.matches("[A-Za-z0-9._~-]{24,512}"))return false;
             String installation=installation(ctx);
             SecretKey secretKey=key();
-            JSONObject enrollment=object("installation",installation,"name",deviceName());
+            JSONObject enrollment=object("installation",installation,"name",deviceName(ctx));
             String recovery=recovery(ctx);
             if(recovery!=null){put(enrollment,"recovery",recovery);put(enrollment,"platform","android");}
             String token=requestToken(PERSONAL_BASE+"/v1/enroll",enrollment,ticket);
@@ -184,7 +185,10 @@ final class CentralCatalog {
         }
         Mac hmac=Mac.getInstance("HmacSHA256");
         hmac.init(new SecretKeySpec(seed.getBytes(StandardCharsets.US_ASCII),"HmacSHA256"));
-        byte[] hash=hmac.doFinal(("SideA recovery v1|"+identity.toLowerCase(java.util.Locale.ROOT)).getBytes(StandardCharsets.UTF_8));
+        // Keep existing phone recovery byte-for-byte compatible. A separate car app on the
+        // same Android device must not take over the phone app's private backup/session.
+        String namespace="studio.sidea.car".equals(ctx.getPackageName())?"SideA recovery v1|car|":"SideA recovery v1|";
+        byte[] hash=hmac.doFinal((namespace+identity.toLowerCase(java.util.Locale.ROOT)).getBytes(StandardCharsets.UTF_8));
         StringBuilder out=new StringBuilder();for(byte b:hash)out.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return out.toString();
     }
     static final class LibraryReply {

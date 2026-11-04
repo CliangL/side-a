@@ -388,13 +388,18 @@ function settingsPage() {
   const s = st.settings;
   const bytes = s.cacheBytes;
   const size = bytes == null ? '…' : (bytes / 1048576).toFixed(1) + ' MB';
-  return bar('设置') + '<div class="section preferences"><h2>缓存</h2>' +
+  return bar('设置') + '<div class="section preferences"><h2>声音</h2>' +
+    bt('sound','','场景音效','<span>场景音效</span><span class="muted">' + esc(soundName()) + ic('right') + '</span>', 'setting rule') + '<h2>缓存</h2>' +
     bt('clearCache','','清理缓存','<span>清理缓存</span><span class="muted">' + size + '</span>', 'setting rule') +
     '<h2>听歌偏好</h2><label class="setting rule">记录听歌偏好<input type="checkbox" data-setting="tracking" ' +
     (st.library.trackingEnabled ? 'checked' : '') + '></label>' +
     textBtn('resetPref','','重置听歌偏好','setting rule danger') + '</div>';
 }
 function pageHTML(r) {
+  if (st.uiMode === 'car') {
+    const page = carPageHTML(r);
+    if (page != null) return page;
+  }
   if (r.name === 'home') return homePage();
   if (r.name === 'library') return libraryPage();
   if (r.name === 'settings') return settingsPage();
@@ -402,6 +407,7 @@ function pageHTML(r) {
   return collectionPage(r);
 }
 function mountPage(r) {
+  if (st.uiMode === 'car') mountCarPage(r);
   if (r.name === 'home') {
     let reel = el('reel');
     if (reel) {
@@ -429,7 +435,7 @@ function mountPage(r) {
       renderResults();
       queryTimer = setTimeout(() => runSearch(r), 420);
     };
-    if (!r.q && !r.target) setTimeout(() => el('query')?.focus(), 50);
+    if (!r.q && !r.target && st.uiMode !== 'car') setTimeout(() => el('query')?.focus(), 50);
   }
   if (r.name === 'settings') {
     document.querySelectorAll('[data-setting]').forEach(
@@ -528,7 +534,7 @@ async function playItems(items, index = 0, show = false) {
     notify('没有可播放的歌曲');
     return;
   }
-  if (show) {
+  if (show && st.uiMode !== 'car') {
     openingTrack = key(items[index]);
     openingExpires = Date.now() + 7000;
   }

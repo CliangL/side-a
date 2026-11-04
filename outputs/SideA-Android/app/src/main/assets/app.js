@@ -14,6 +14,8 @@ async function start() {
     '<div class="section"><i class="side">Side A</i></div>';
   try {
     const boot = await req('init');
+    st.uiMode = boot.uiMode === 'car' ? 'car' : 'phone';
+    setupCarLayout();
     st.library = boot.library;
     st.settings = boot.settings;
     st.starter = boot.starter || [];
