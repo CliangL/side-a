@@ -342,7 +342,7 @@ def create_app(config=None):
             name = text(values.get('name'), '软件名称', 100)
             enabled = bool_value(values.get('enabled', True))
             budget = price(values.get('monthly_budget_usd', 5), '每月预算', nullable=False)
-            interval = integer(values.get('min_interval_seconds', 1800), '最小更新间隔', 60, 86400)
+            interval = integer(values.get('min_interval_seconds', 300), '最小更新间隔', 60, 86400)
             model_id = uid(values['model_id']) if values.get('model_id') else None
             if model_id and not db.execute('SELECT id FROM models WHERE id=%s', (model_id,)).fetchone():
                 raise Problem('not_found', '模型不存在', 404)
@@ -413,7 +413,7 @@ def create_app(config=None):
         parts = (application['id'], application['updated_at'], model['id'] if model else '',
                  model['revision'] if model else '', model['provider_updated_at'] if model else '', enabled)
         revision = hashlib.sha256('|'.join(str(part) for part in parts).encode()).hexdigest()
-        return ok(config={'revision': revision, 'enabled': enabled})
+        return ok(config={'revision': revision, 'enabled': enabled, 'min_interval_seconds': application['min_interval_seconds']})
 
     @app.post('/v1/tasks')
     @bearer('app')

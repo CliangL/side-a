@@ -144,3 +144,17 @@ def test_proxy_registration_preserves_selected_compatible_protocol(monkeypatch, 
         assert created[0]['litellm_params']['model'] == 'openai/gpt-6.1-terra'
         assert 'use_chat_completions_api' not in created[0]['litellm_params']
         assert created[0]['model_info']['supported_endpoints'] == ['/v1/responses']
+
+
+def test_discovery_flags_are_optional_strict_and_preserved():
+    from core import prompt_for
+    legacy = validate_input('music.recommend.v1', INPUT)
+    assert 'familiar' not in legacy['candidates'][0]
+    candidate = {**INPUT['candidates'][0], 'familiar': True, 'recent': False, 'shown': True}
+    clean = validate_input('music.recommend.v1', {**INPUT, 'candidates': [candidate]})
+    assert clean['candidates'][0] == candidate
+    system, user = prompt_for('music.recommend.v1', clean)
+    assert '四分之三' in system and 'familiar' in system and 'shown' in system
+    for invalid in ('yes', 1, None):
+        with pytest.raises(Problem):
+            validate_input('music.recommend.v1', {**INPUT, 'candidates': [{**candidate, 'familiar': invalid}]})

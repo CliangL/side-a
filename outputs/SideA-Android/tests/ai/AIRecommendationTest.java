@@ -1,6 +1,7 @@
 package studio.sidea.android;
 import android.content.Context;
 import java.lang.reflect.Field;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.json.*;
 import static studio.sidea.android.Json.*;
@@ -12,6 +13,16 @@ public final class AIRecommendationTest {
  private static void probeNow(Context ctx)throws Exception{Field field=AIRecommendations.class.getDeclaredField("nextProbe");field.setAccessible(true);synchronized(AIRecommendations.class){field.setLong(null,0);}AIRecommendations.refreshIfDue(ctx);idle();}
  public static void main(String[] args)throws Exception{
   try{
+   JSONArray pool=new JSONArray();Set<String> known=new HashSet<>();
+   for(int i=0;i<8;i++){JSONObject t=object("title","known-"+i,"artist","Artist");pool.put(t);known.add(RecommendationSelection.key(t));}
+   for(int i=0;i<24;i++)pool.put(object("title","new-"+i,"artist","Artist"));
+   JSONArray first=RecommendationSelection.order(pool,known,Collections.emptySet(),24);Set<String> shown=new HashSet<>();int unheard=0;
+   for(JSONObject t:rows(first)){shown.add(RecommendationSelection.key(t));if(!known.contains(RecommendationSelection.key(t)))unheard++;}
+   check(unheard==18,"discovery must reserve 18 of 24 places for unheard songs when possible");
+   JSONArray next=RecommendationSelection.order(pool,known,shown,8);
+   for(JSONObject t:rows(next))check(!shown.contains(RecommendationSelection.key(t)),"manual batch avoids all previous songs when alternatives exist");
+   JSONArray duplicates=new JSONArray().put(object("title","海浪","artist","deca joins","source","qq")).put(object("title","海浪","artist","deca joins","source","netease"));
+   check(RecommendationSelection.order(duplicates,known,shown,24).length()==1,"same recording from two catalogs is shown once");
    Context ctx=new Context();AtomicInteger updated=new AtomicInteger();
    JSONArray tracks=new JSONArray().put(object("source","netease","trackID","a","title","A","artist","Artist"))
     .put(object("source","netease","trackID","b","title","B","artist","Artist"));
@@ -32,10 +43,18 @@ public final class AIRecommendationTest {
    int probes=CentralCatalog.probes.get();
    AIRecommendations.setActive(ctx,false,null);probeNow(ctx);
    check(CentralCatalog.probes.get()==probes,"background app must not probe or generate");
+   AIRecommendations.setPlaybackActive(ctx,true);idle();int backgroundProbes=CentralCatalog.probes.get();
+   probeNow(ctx);check(CentralCatalog.probes.get()>backgroundProbes,"locked-screen playback continues AI observation");
+   AIRecommendations.setPlaybackActive(ctx,false);backgroundProbes=CentralCatalog.probes.get();probeNow(ctx);
+   check(CentralCatalog.probes.get()==backgroundProbes,"paused background playback stops probes");
    CentralCatalog.revision="d".repeat(64);CentralCatalog.slow=true;CentralCatalog.preferred="b";
    AIRecommendations.setActive(ctx,true,updated::incrementAndGet);idle();
    int slowPosts=CentralCatalog.modelCalls.get();
    check(!ctx.getSharedPreferences("sidea.ai",0).getString("pending","").isEmpty(),"queued job ID and input must be durable");
+   long now=System.currentTimeMillis();
+   check(ctx.getSharedPreferences("sidea.ai",0).getLong("retryAfter",0)-now<=301000&&ctx.getSharedPreferences("sidea.ai",0).getLong("retryAfter",0)-now>290000,"model cooldown follows five-minute server policy");
+   Field nextProbe=AIRecommendations.class.getDeclaredField("nextProbe");nextProbe.setAccessible(true);
+   check(nextProbe.getLong(null)-now<=5100,"pending result is checked within five seconds");
    probeNow(ctx);
    check(CentralCatalog.polls.get()==1&&CentralCatalog.modelCalls.get()==slowPosts,"running job uses GET despite cooldown");
    CentralCatalog.offline=true;probeNow(ctx);CentralCatalog.offline=false;

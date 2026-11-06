@@ -21,7 +21,7 @@ SideARecoverySeed.txt
 !/outputs/SideA-Android/
 !/outputs/SideA-Server/
 !/outputs/AI-Hub/
-!/outputs/安装 Side A 0.7.2 到 iPhone.command
+!/outputs/安装 Side A 0.7.3 到 iPhone.command
 *.ipa
 *.apk
 *.aab

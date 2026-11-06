@@ -51,7 +51,10 @@ def register_routes(app, sql, device_auth):
                     config = reply.get('config', {})
                     if not isinstance(config, dict) or type(config.get('enabled')) is not bool or not re.fullmatch('[0-9a-f]{64}', str(config.get('revision', ''))):
                         raise ValueError('invalid configuration')
-                    return jsonify(ok=True, config={'revision': config['revision'], 'enabled': config['enabled']})
+                    interval = config.get('min_interval_seconds', 300)
+                    if type(interval) is not int or not 0 <= interval <= 86400:
+                        raise ValueError('invalid interval')
+                    return jsonify(ok=True, config={'revision': config['revision'], 'enabled': config['enabled'], 'min_interval_seconds': interval})
                 task = reply['task']
                 if not isinstance(task, dict):
                     raise ValueError('invalid result')
@@ -84,11 +87,14 @@ def register_routes(app, sql, device_auth):
             abort(400)
         seen = set()
         for item in candidates:
-            if not isinstance(item, dict) or set(item) - {'id', 'title', 'artist', 'album'}:
+            if not isinstance(item, dict) or set(item) - {'id', 'title', 'artist', 'album', 'familiar', 'recent', 'shown'}:
                 abort(400)
             if not re.fullmatch('[0-9a-f]{64}', str(item.get('id', ''))) or item['id'] in seen:
                 abort(400)
             seen.add(item['id'])
+            for flag in ('familiar', 'recent', 'shown'):
+                if flag in item and type(item[flag]) is not bool:
+                    abort(400)
             for field in ('title', 'artist', 'album'):
                 value = item.get(field, '')
                 if not isinstance(value, str) or len(value) > 200 or (field != 'album' and not value):
@@ -96,7 +102,7 @@ def register_routes(app, sql, device_auth):
         # Cap actual UTF-8 payload, not just Python character count. Long Chinese
         # titles should reduce the candidate pool rather than exceed the model's
         # conservative 32k input budget (which includes prompts and envelope).
-        candidates = [{k: v if k == 'id' else v[:80] for k, v in item.items()} for item in candidates]
+        candidates = [{k: v if k == 'id' or isinstance(v, bool) else v[:80] for k, v in item.items()} for item in candidates]
         payload = {'profile': profile, 'candidates': candidates, 'limit': min(24, len(candidates))}
         try:
             while len(candidates) > 1 and len(json.dumps(payload, ensure_ascii=False).encode('utf-8')) > 28000:

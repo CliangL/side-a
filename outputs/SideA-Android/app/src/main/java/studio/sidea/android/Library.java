@@ -223,6 +223,30 @@ final class Library {
         }
         return allowed;
     }
+    private static Set<String> knownKeys(JSONObject d){Set<String> keys=new HashSet<>();for(JSONObject t:known(d))keys.add(RecommendationSelection.key(t));return keys;}
+    private static Set<String> shown(Context ctx){
+        Set<String> keys=new LinkedHashSet<>();try{JSONArray a=new JSONArray(ctx.getSharedPreferences("sidea.discovery",0).getString("shown","[]"));for(int i=0;i<a.length();i++)keys.add(a.optString(i));}catch(JSONException ignored){}return keys;
+    }
+    static synchronized JSONArray discoveryOrder(Context ctx,JSONArray tracks,int limit){return RecommendationSelection.order(tracks,knownKeys(data(ctx)),shown(ctx),limit);}
+    static synchronized JSONObject aiFlags(Context ctx,JSONObject t){
+        Set<String> recent=new HashSet<>();for(JSONObject r:list(data(ctx),"recent")){recent.add(RecommendationSelection.key(r));if(recent.size()>=12)break;}
+        String key=RecommendationSelection.key(t);return object("familiar",knownKeys(data(ctx)).contains(key),"recent",recent.contains(key),"shown",shown(ctx).contains(key));
+    }
+    static synchronized int recommendationTurn(Context ctx){return ctx.getSharedPreferences("sidea.discovery",0).getInt("turn",0);}
+    static synchronized void nextRecommendations(Context ctx,JSONArray displayed){
+        SharedPreferences p=ctx.getSharedPreferences("sidea.discovery",0);
+        if(System.currentTimeMillis()-p.getLong("changed",0)<2000)return;
+        Set<String> keys=shown(ctx);for(JSONObject t:rows(displayed)){String k=RecommendationSelection.key(t);keys.remove(k);keys.add(k);}
+        List<String> all=new ArrayList<>(keys);if(all.size()>96)all=all.subList(all.size()-96,all.size());
+        p.edit().putString("shown",new JSONArray(all).toString()).putInt("turn",p.getInt("turn",0)+1).putLong("changed",System.currentTimeMillis()).apply();
+        ctx.getSharedPreferences("sidea.ai",0).edit().remove("result").remove("expires").remove("fingerprint").apply();
+    }
+    static synchronized List<String> discoveryArtists(Context ctx){
+        if(!data(ctx).optBoolean("trackingEnabled",true))return new ArrayList<>();
+        LinkedHashSet<String> artists=new LinkedHashSet<>();JSONObject seed=seed(data(ctx));if(seed!=null)artists.add(text(seed,"artist"));
+        for(JSONObject t:list(data(ctx),"favorites")){artists.add(text(t,"artist"));if(artists.size()>=2)break;}
+        artists.remove("");return new ArrayList<>(artists);
+    }
     static synchronized JSONObject aiProfile(Context ctx){
         JSONObject d=data(ctx);if(!d.optBoolean("trackingEnabled",true))return null;
         JSONArray favorites=new JSONArray(),listening=new JSONArray(),muted=new JSONArray();
@@ -236,7 +260,8 @@ final class Library {
             for(String[] pair:new String[][]{{"choices","choices"},{"replays","replays"},{"completions","complete"},{"quick_skips","skips"}})
                 put(signal,pair[0],signal.optInt(pair[0])+h.optInt(pair[1]));
         }
-        for(JSONObject signal:signals.values()){if(listening.length()>=12)break;listening.put(signal);}
+        LinkedHashSet<String> order=new LinkedHashSet<>();for(JSONObject t:list(d,"recent"))order.add(id(t));order.addAll(signals.keySet());
+        for(String key:order){if(listening.length()>=12)break;JSONObject signal=signals.get(key);if(signal!=null)listening.put(signal);}
         JSONObject styles=map(d,"muted");List<String> keys=new ArrayList<>();styles.keys().forEachRemaining(keys::add);Collections.sort(keys);
         for(String k:keys){if(muted.length()>=12)break;if(styles.optBoolean(k))muted.put(AIRecommendations.clipped(k,30));}
         if(favorites.length()==0&&listening.length()==0)return null;
@@ -275,6 +300,6 @@ final class Library {
         Map<String,Integer> counts=new HashMap<>();List<JSONObject> first=new ArrayList<>(),extras=new ArrayList<>();
         for(JSONObject t:songs){String k=text(t,"artist").toLowerCase(Locale.ROOT);int n=counts.getOrDefault(k,0);
             (n<2?first:extras).add(t);counts.put(k,n+1);}
-        first.addAll(extras);return new JSONArray(first.subList(0,Math.min(limit,first.size())));
+        first.addAll(extras);return discoveryOrder(ctx,new JSONArray(first),limit);
     }
 }

@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS apps (
  id uuid PRIMARY KEY, name text NOT NULL, key_hash text NOT NULL UNIQUE,
  key_prefix text NOT NULL, enabled boolean NOT NULL DEFAULT true,
  model_id uuid REFERENCES models(id), monthly_budget_usd numeric(18,6) NOT NULL DEFAULT 5,
- min_interval_seconds int NOT NULL DEFAULT 1800,
+ min_interval_seconds int NOT NULL DEFAULT 300,
  capabilities jsonb NOT NULL DEFAULT '["music.recommend.v1"]',
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );

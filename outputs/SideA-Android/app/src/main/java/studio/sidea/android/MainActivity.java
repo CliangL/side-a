@@ -208,7 +208,10 @@ public final class MainActivity extends Activity {
     private void send(String name,String parameters){
         if(!destroyed&&web!=null)web.evaluateJavascript("window."+name+" && window."+name+"("+parameters.replace("\u2028","\\u2028").replace("\u2029","\\u2029")+")",null);
     }
-    private Object recommend()throws Exception{
+    private String discoveryKey="";
+    private long discoveryLoaded;
+    private JSONArray discoveryTracks=new JSONArray(),displayedRecommendations=new JSONArray();
+    private synchronized Object recommend()throws Exception{
         JSONObject seed=Library.seed(this);
         List<JSONObject> tracks=new ArrayList<>();
         if(seed!=null){
@@ -217,10 +220,19 @@ public final class MainActivity extends Activity {
             }catch(Exception ignored){}
             try{addUnique(tracks,rows(catalog.related(seed)));}catch(Exception ignored){}
         }
+        List<String> artists=Library.discoveryArtists(this);int turn=Library.recommendationTurn(this);
+        String key=artists.toString()+":"+(turn%3);
+        if(!key.equals(discoveryKey)||System.currentTimeMillis()-discoveryLoaded>3600000){
+            List<JSONObject> found=new ArrayList<>();
+            for(String artist:artists){try{addUnique(found,rows(array(catalog.searchPage(artist,Collections.singletonList("central"),1+turn%3),"items")));}catch(Exception ignored){}}
+            discoveryKey=key;discoveryLoaded=System.currentTimeMillis();discoveryTracks=new JSONArray(found);
+        }
+        addUnique(tracks,rows(discoveryTracks));
         addUnique(tracks,rows(catalog.starters()));
         JSONObject charts=catalog.discovery(false,false);
         addUnique(tracks,rows(array(charts,"newReleases")));addUnique(tracks,rows(array(charts,"hot")));
-        return AIRecommendations.ranked(this,Library.recommend(this,tracks,60));
+        displayedRecommendations=AIRecommendations.ranked(this,Library.recommend(this,tracks,60));
+        return displayedRecommendations;
     }
     private JSONObject settings(JSONObject args){
         SharedPreferences prefs=getSharedPreferences("sidea.settings",MODE_PRIVATE);
@@ -290,7 +302,7 @@ public final class MainActivity extends Activity {
                 return catalog.rank(query,songs);
             }
             case "discover":return catalog.discovery(args.optBoolean("force"),true);
-            case "recommend":return recommend();
+            case "recommend":if(args.optBoolean("fresh"))Library.nextRecommendations(this,displayedRecommendations);return recommend();
             case "related":return catalog.related(args.getJSONObject("track"));
             case "genres":return catalog.genres(args.getJSONObject("track"));
             case "lyrics":return catalog.lyrics(args.getJSONObject("track"));

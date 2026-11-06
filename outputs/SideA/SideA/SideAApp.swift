@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // Phone and CarPlay scenes can connect in either order. They share one audio session and queue.
 @MainActor
@@ -9,6 +10,8 @@ final class SideASession {
     let discovery: DiscoveryStore
     let catalogs = SearchCatalogSettings()
     let cloud: DeviceLibrarySync
+    private var listeningAI: Task<Void, Never>?
+    private var playingSubscription: AnyCancellable?
 
     private init() {
         library = LibraryStore()
@@ -33,6 +36,11 @@ final class SideASession {
         library.onPersist = { [weak cloud] in cloud?.changed() }
         player.onPersist = { [weak cloud] in cloud?.changed(after: 15) }
         catalogs.onPersist = { [weak cloud] in cloud?.changed() }
+        playingSubscription = player.$isPlaying.removeDuplicates().sink { [weak self] playing in
+            guard let self else { return }
+            self.listeningAI?.cancel()
+            self.listeningAI = playing ? Task { await library.observeAI(owner: "playback") } : nil
+        }
         player.onEvent = { [weak library, discovery] track, event, listened, duration in
             library?.record(track, event: event, listened: listened, duration: duration)
             if event == "manualPlay" || event == "replay" {

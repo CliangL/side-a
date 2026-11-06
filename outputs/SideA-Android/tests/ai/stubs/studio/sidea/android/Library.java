@@ -4,6 +4,8 @@ import org.json.*;
 import static studio.sidea.android.Json.*;
 final class Library {
  static volatile int plays=1;static volatile boolean enabled=true;static volatile String hidden="";
+ static JSONArray discoveryOrder(Context ctx,JSONArray tracks,int limit){return RecommendationSelection.order(tracks,new java.util.HashSet<>(),new java.util.HashSet<>(),limit);}
+ static JSONObject aiFlags(Context ctx,JSONObject t){return object("familiar",false,"recent",false,"shown",false);}
  static JSONObject aiProfile(Context ctx){return enabled?object("plays",plays):null;}
  static JSONArray aiAllowed(Context ctx,JSONArray candidates){JSONArray out=new JSONArray();for(JSONObject track:rows(candidates))if(!id(track).equals(hidden))out.put(track);return out;}
 }

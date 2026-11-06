@@ -98,7 +98,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             }
         }
         updateFavoriteButton()
-        let candidates = neighbors + Track.starterTracks + session.discovery.newReleases + session.discovery.hot
+        let candidates = session.discovery.explored + neighbors + session.discovery.newReleases + session.discovery.hot + Track.starterTracks
         let fingerprint = session.library.aiRequestKey(from: candidates)
         if fingerprint != aiFingerprint {
             aiFingerprint = fingerprint
@@ -148,7 +148,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             empty = "还没有歌单"
             detail = "可以在 iPhone 上创建歌单。"
         case .personal:
-            items = songItems(library.recommendations(from: neighbors + Track.starterTracks + discovery.newReleases + discovery.hot))
+            items = songItems(library.recommendations(from: discovery.explored + neighbors + discovery.newReleases + discovery.hot + Track.starterTracks))
         case .hot, .newMusic:
             let isHot: Bool
             if case .hot = page { isHot = true } else { isHot = false }

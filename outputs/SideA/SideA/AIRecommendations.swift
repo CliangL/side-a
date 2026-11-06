@@ -4,7 +4,7 @@ import CryptoKit
 // Only bounded listening summaries and catalog metadata leave the device. Playable
 // Track objects remain here: a model can reorder existing songs, never create URLs.
 enum AIRecommendations {
-    struct Candidate: Codable { let id: String; let title: String; let artist: String; let album: String }
+    struct Candidate: Codable { let id: String; let title: String; let artist: String; let album: String; let familiar: Bool?; let recent: Bool?; let shown: Bool? }
     struct Signal: Codable {
         let title: String; let artist: String
         var choices = 0; var replays = 0; var completions = 0; var quick_skips = 0
@@ -18,7 +18,7 @@ enum AIRecommendations {
         let task: Job
     }
     struct Cache: Codable { let fingerprint: String; let expires: Date; let result: Result; var revision: String? = nil }
-    struct Configuration: Decodable { let revision: String; let enabled: Bool }
+    struct Configuration: Decodable { let revision: String; let enabled: Bool; let min_interval_seconds: Int? }
     struct Pending: Codable {
         let id: String; let fingerprint: String; let revision: String; let created: Date; let input: Input
         var expired: Bool { Date().timeIntervalSince(created) > 21600 }
@@ -28,7 +28,7 @@ enum AIRecommendations {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         return try? encoder.encode(input)
     }
-    static func input(saved: SavedLibrary, candidates: [Track]) -> Input {
+    static func input(saved: SavedLibrary, candidates: [Track], shown: [String] = []) -> Input {
         func signal(_ track: Track) -> Signal { Signal(title: String(track.title.prefix(60)), artist: String(track.artist.prefix(60))) }
         var grouped = [String: Signal](), order = [String]()
         // Last 30 days; network failures and pauses were never recorded as skips.
@@ -37,12 +37,41 @@ enum AIRecommendations {
             grouped[day.track.id]!.choices += day.choices; grouped[day.track.id]!.replays += day.replays
             grouped[day.track.id]!.completions += day.completions; grouped[day.track.id]!.quick_skips += day.quickSkips
         }
+        let recentIDs = saved.recent.map(\.id)
+        var seen = Set<String>()
+        order = (recentIDs + order).filter { grouped[$0] != nil && seen.insert($0).inserted }
+        let known = knownKeys(saved), recent = Set(saved.recent.prefix(12).map(recordingKey)), displayed = Set(shown)
         let profile = Profile(favorites: saved.favorites.prefix(10).map(signal),
                               listening: order.prefix(12).compactMap { grouped[$0] },
                               muted_styles: Array((saved.mutedStyles ?? []).sorted().prefix(12)).map { String($0.prefix(30)) })
         return Input(profile: profile, candidates: candidates.prefix(60).map {
-            Candidate(id: hash($0.id), title: String($0.title.prefix(80)), artist: String($0.artist.prefix(80)), album: String($0.album.prefix(80)))
+            Candidate(id: hash($0.id), title: String($0.title.prefix(80)), artist: String($0.artist.prefix(80)), album: String($0.album.prefix(80)), familiar: known.contains(recordingKey($0)), recent: recent.contains(recordingKey($0)), shown: displayed.contains(recordingKey($0)))
         })
+    }
+    static func recordingKey(_ t: Track) -> String {
+        func clean(_ s: String) -> String { s.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(String.init).joined() }
+        return clean(t.title) + "|" + clean(t.artist)
+    }
+    static func knownKeys(_ saved: SavedLibrary) -> Set<String> {
+        Set((saved.favorites + saved.recent + saved.listening.map(\.track)).map(recordingKey))
+    }
+    // Prefer unshown recordings; within each pool preserve model order while
+    // reserving three of every four places for unheard music when available.
+    static func discoveryOrder(_ tracks: [Track], saved: SavedLibrary, shown: [String], limit: Int) -> [Track] {
+        let known = knownKeys(saved), displayed = Set(shown)
+        var seen = Set<String>()
+        let unique = tracks.filter { seen.insert(recordingKey($0)).inserted }
+        var result = [Track]()
+        for pool in [unique.filter { !displayed.contains(recordingKey($0)) }, unique.filter { displayed.contains(recordingKey($0)) }] {
+            let fresh = pool.filter { !known.contains(recordingKey($0)) }, familiar = pool.filter { known.contains(recordingKey($0)) }
+            var n = 0, f = 0, slot = 0
+            while result.count < limit && (n < fresh.count || f < familiar.count) {
+                if n < fresh.count && (slot % 4 != 3 || f >= familiar.count) { result.append(fresh[n]); n += 1 }
+                else if f < familiar.count { result.append(familiar[f]); f += 1 }
+                slot += 1
+            }
+        }
+        return result
     }
     static func reorder(_ candidates: [Track], result: Result) -> [Track] {
         let map = Dictionary(candidates.map { (hash($0.id), $0) }, uniquingKeysWith: { first, _ in first })

@@ -346,10 +346,10 @@ function scheduleRecommendations() {
   recTimer = setTimeout(refreshRecommendation, 180);
 }
 window.sideARecommendations = scheduleRecommendations;
-async function refreshRecommendation() {
+async function refreshRecommendation(fresh = false) {
   const token = ++recToken;
   try {
-    const items = await req('recommend');
+    const items = await req('recommend', { fresh: fresh === true });
     if (token !== recToken || !Array.isArray(items)) return;
     st.recommended = items;
     if (current().name === 'home' || (current().name === 'mix' && current().index === 0)) render();

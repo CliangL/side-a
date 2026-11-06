@@ -75,7 +75,7 @@ private struct HomeView: View {
     @State private var batch = 0
     @State private var neighbors: [Track] = []
     private var seed: Track? { library.seedTracks.first }
-    private var candidates: [Track] { neighbors + Track.starterTracks + discovery.newReleases + discovery.hot }
+    private var candidates: [Track] { discovery.explored + neighbors + discovery.newReleases + discovery.hot + Track.starterTracks }
     private var personal: [Track] { library.recommendations(from: candidates) }
     var body: some View {
         GeometryReader { geometry in
@@ -112,7 +112,7 @@ private struct HomeView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 SectionTitle(title: "顺着你的口味", note: library.reason)
-                                Button("换一批") { batch += 1 }.font(.caption).accessibilityIdentifier("home.refreshSuggestions")
+                                Button("换一批") { library.nextRecommendations(from: candidates); batch = 0 }.font(.caption).accessibilityIdentifier("home.refreshSuggestions")
                             }
                             ForEach(batchItems) { t in TrackRow(track: t, queue: batchItems, showMenu: false) }
                             if personal.isEmpty { EmptyHint(title: "从一首喜欢的歌开始", detail: "搜歌、重播或收藏后，这里会慢慢长出你的口味。") }
@@ -125,9 +125,13 @@ private struct HomeView: View {
                         }.padding(.horizontal, 20)
                     }
                 }.padding(.top, 5).padding(.bottom, 18)
-            }.refreshable { await discovery.refresh(force: true) }.background { Paper() }
+            }.refreshable { library.nextRecommendations(from: candidates); batch = 0; await discovery.refresh(force: true) }.background { Paper() }
         }
         .task(id: library.aiRequestKey(from: candidates)) { library.requestAI(from: candidates) }
+        .task(id: library.seedTracks.prefix(2).map(\.id).joined(separator: "|") + String(library.recommendationTurn)) {
+            let found = await discovery.explore(seeds: library.seedTracks, turn: library.recommendationTurn)
+            if !Task.isCancelled { discovery.explored = found }
+        }
         .task(id: seed?.id) {
             neighbors = []
             if let seed { let result = await discovery.related(to: seed); if !Task.isCancelled { neighbors = result } }

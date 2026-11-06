@@ -162,6 +162,7 @@ public final class PlaybackService extends Service {
     @Override public IBinder onBind(Intent i) { return null; }
     @Override public void onDestroy() {
         destroyed=true;
+        AIRecommendations.setPlaybackActive(this,false);
         unregisterReceiver(unplug);
         owner.post(()->{
             persist(); releaseEngine(); abandonFocus(); session.release();
@@ -456,6 +457,7 @@ public final class PlaybackService extends Service {
         long now=SystemClock.elapsedRealtime();
         if(sleepEnd>0 && System.currentTimeMillis()>=sleepEnd) { sleepEnd=0;pause(false); }
         updatePosition();
+        AIRecommendations.setPlaybackActive(PlaybackService.this,playing && !loading);
         String selected=SoundPreset.normalize(getSharedPreferences(SETTINGS,0).getString("soundPreset",SoundPreset.ORIGINAL));
         boolean soundChanged=!selected.equals(sound.preset());
         if(soundChanged)sound.select(selected);

@@ -53,7 +53,7 @@ class Database:
             if not model or not model['enabled'] or not model['provider_enabled'] or not model['key_enc']:
                 fail('model_unconfigured', 503)
             request_hash = hashlib.sha256(canonical({
-                'capability': capability, 'input': task_input, 'model': str(model['id']),
+                'capability': capability, 'policy': 2 if capability == 'music.recommend.v1' else 1, 'input': task_input, 'model': str(model['id']),
                 'revision': model['revision'], 'provider_updated': str(model['provider_updated_at']),
             }).encode()).hexdigest()
             if idempotency:

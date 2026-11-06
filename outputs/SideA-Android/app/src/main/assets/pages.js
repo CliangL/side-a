@@ -607,8 +607,9 @@ Object.assign(actions, {
     st.homeRecent = i === '1';
     render();
   },
-  batch: () => {
-    st.batch++;
+  batch: async () => {
+    await refreshRecommendation(true);
+    st.batch = 0;
     render();
   },
   mix: (i) => go({ name: 'mix', index: Number(i) }),

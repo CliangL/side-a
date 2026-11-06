@@ -205,7 +205,8 @@ def test_config_probe_changes_without_disclosing_model_and_allows_disabled_probe
     provider, model, application, auth = seed(setup)
     initial = client.get('/v1/config', headers=auth)
     assert initial.status_code == 200 and initial.json['config']['enabled']
-    assert set(initial.json['config']) == {'revision', 'enabled'}
+    assert set(initial.json['config']) == {'revision', 'enabled', 'min_interval_seconds'}
+    assert initial.json['config']['min_interval_seconds'] == 300
     assert len(initial.json['config']['revision']) == 64
     client.patch('/admin/api/models/' + model['id'], headers=headers, json={'upstream_model': 'new-model'})
     updated = client.get('/v1/config', headers=auth).json['config']

@@ -13,7 +13,7 @@ import static studio.sidea.android.Json.*;
 /** Private summaries and IDs only. Configuration probes are free; playback never waits for AI. */
 final class AIRecommendations {
     private static final ExecutorService worker=Executors.newSingleThreadExecutor();
-    private static boolean busy,active;
+    private static boolean busy,active,foreground,playback;
     private static long retryAfter,nextProbe,generation;
     private static String revision;
     private static JSONArray latestCandidates=new JSONArray();
@@ -33,20 +33,25 @@ final class AIRecommendations {
         ordered.addAll(originals.values());return new JSONArray(ordered);
     }
     static synchronized void setActive(Context ctx,boolean value,Runnable changed){
-        active=value;onChanged=value?changed:null;
+        foreground=value;active=foreground||playback;onChanged=value?changed:null;
         if(value){nextProbe=0;refreshIfDue(ctx);}
+    }
+    static synchronized void setPlaybackActive(Context ctx,boolean value){
+        playback=value;active=foreground||playback;
+        if(active)refreshIfDue(ctx);
     }
     static synchronized void reset(Context ctx){
         ctx.getSharedPreferences("sidea.ai",Context.MODE_PRIVATE).edit().clear().apply();
+        ctx.getSharedPreferences("sidea.discovery",Context.MODE_PRIVATE).edit().clear().apply();
         retryAfter=0;nextProbe=0;generation++;
     }
     static synchronized JSONArray ranked(Context ctx,JSONArray candidates){
-        latestCandidates=candidates;
-        if(Library.aiProfile(ctx)==null)return firstPage(candidates);
+        if(Library.aiProfile(ctx)==null){latestCandidates=candidates;return firstPage(candidates);}
+        candidates=Library.aiAllowed(ctx,candidates);latestCandidates=candidates;
         refreshIfDue(ctx);
         SharedPreferences cache=ctx.getSharedPreferences("sidea.ai",Context.MODE_PRIVATE);
         if(cache.getLong("expires",0)>System.currentTimeMillis()){
-            try{return firstPage(reorder(Library.aiAllowed(ctx,candidates),new JSONObject(cache.getString("result","{}"))));}catch(JSONException ignored){}
+            try{return Library.discoveryOrder(ctx,reorder(Library.aiAllowed(ctx,candidates),new JSONObject(cache.getString("result","{}"))),24);}catch(JSONException ignored){}
         }
         return firstPage(candidates);
     }
@@ -94,18 +99,22 @@ final class AIRecommendations {
                 JSONObject profile=Library.aiProfile(ctx);if(profile==null)return;
                 JSONArray candidates;synchronized(AIRecommendations.class){candidates=latestCandidates;}
                 JSONArray metadata=new JSONArray();
-                for(JSONObject track:rows(Library.aiAllowed(ctx,candidates)))metadata.put(object("id",hash(id(track)),
-                        "title",clipped(text(track,"title"),80),"artist",clipped(text(track,"artist"),80),"album",clipped(text(track,"album"),80)));
+                for(JSONObject track:rows(Library.aiAllowed(ctx,candidates))){
+                    JSONObject flags=Library.aiFlags(ctx,track);
+                    metadata.put(object("id",hash(id(track)),"title",clipped(text(track,"title"),80),"artist",clipped(text(track,"artist"),80),"album",clipped(text(track,"album"),80),"familiar",flags.optBoolean("familiar"),"recent",flags.optBoolean("recent"),"shown",flags.optBoolean("shown")));
+                }
                 if(metadata.length()==0)return;
                 JSONObject input=object("profile",profile,"candidates",metadata);String fingerprint=hash(input.toString());
                 if(fingerprint.equals(cache.getString("fingerprint",""))&&cache.getLong("expires",0)>System.currentTimeMillis())return;
                 synchronized(AIRecommendations.class){
                     retryAfter=Math.max(retryAfter,cache.getLong("retryAfter",0));
                     if(!active||generation!=ownGeneration||System.currentTimeMillis()<retryAfter)return;
-                    retryAfter=System.currentTimeMillis()+600000;
+                    retryAfter=System.currentTimeMillis()+60000;
                     cache.edit().putLong("retryAfter",retryAfter).commit();
                 }
                 JSONObject job=CentralCatalog.ai(ctx,"POST","/v1/ai/recommend",input).getJSONObject("task");
+                retryAfter=System.currentTimeMillis()+1000L*Math.max(60,config.optInt("min_interval_seconds",300));
+                cache.edit().putLong("retryAfter",retryAfter).commit();
                 String taskId=text(job,"id");if(!taskId.matches("[A-Za-z0-9_-]{1,80}"))return;
                 pending=object("id",taskId,"revision",current,"fingerprint",fingerprint,"created",System.currentTimeMillis(),"input",input);
                 synchronized(AIRecommendations.class){
@@ -116,7 +125,7 @@ final class AIRecommendations {
                 }
                 if(isActive())receive(ctx,job,pending,ownGeneration);
             }catch(Exception unavailable){ /* Keep local recommendations and pending job for a later connection. */ }
-            finally{synchronized(AIRecommendations.class){busy=false;nextProbe=System.currentTimeMillis()+60000;}}
+            finally{synchronized(AIRecommendations.class){busy=false;nextProbe=System.currentTimeMillis()+(cache.getString("pending","").isEmpty()?60000:5000);}}
         });
     }
     private static void receive(Context ctx,JSONObject job,JSONObject pending,long ownGeneration){

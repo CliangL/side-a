@@ -5,6 +5,7 @@ import Combine
 // same recording IDs, including distinct live, remastered and original versions.
 @MainActor
 final class DiscoveryStore: ObservableObject {
+    @Published var explored: [Track] = []
     @Published private(set) var hot: [Track] = []
     @Published private(set) var newReleases: [Track] = []
     @Published private(set) var hotSource = "网易云音乐 · 热歌榜"
@@ -141,6 +142,24 @@ final class DiscoveryStore: ObservableObject {
         return await task.value
     }
 
+    func explore(seeds: [Track], turn: Int) async -> [Track] {
+        var artists = Set<String>()
+        let selected = seeds.filter { artists.insert($0.artist.lowercased()).inserted }.prefix(2)
+        let base = (try? CentralServer.read())?.base ?? CentralServer.personalBase
+        let catalog = SearchCatalog(name: "全部", source: "central", endpoint: base.appending(path: "v1/music"), managed: true)
+        let generation = GDClient.shared.cacheGeneration
+        var results = [Track]()
+        for seed in selected {
+            guard !Task.isCancelled else { return results }
+            let key = "discovery/artist/v1/" + AIRecommendations.hash(seed.artist) + "/" + String(1 + turn % 3)
+            if let cached = GDClient.shared.cachedData(key: key, maxAge: 3600), let tracks = try? JSONDecoder().decode([Track].self, from: cached) { results += tracks; continue }
+            if let tracks = try? await GDClient.shared.search(seed.artist, catalog: catalog, page: 1 + turn % 3), !tracks.isEmpty {
+                results += tracks
+                if let data = try? JSONEncoder().encode(tracks) { GDClient.shared.cacheData(data, key: key, generation: generation) }
+            }
+        }
+        return results
+    }
     func related(to track: Track) async -> [Track] {
         guard track.usesNetEaseCatalog, Int64(track.trackID) != nil else { return [] }
         let key = "chart/similar/v2/" + track.id

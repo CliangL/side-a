@@ -90,7 +90,7 @@ class AIBridgeTests(unittest.TestCase):
         reply.payload=json.dumps({'ok':True,'config':{'revision':'f'*64,'enabled':True,'key':'do-not-forward'}}).encode()
         with patch('ai_bridge.requests.request',return_value=reply) as hub:
             response=self.call('GET','/v1/ai/config')
-            self.assertEqual(response.json,{'ok':True,'config':{'revision':'f'*64,'enabled':True}})
+            self.assertEqual(response.json,{'ok':True,'config':{'revision':'f'*64,'enabled':True,'min_interval_seconds':300}})
             self.assertEqual(hub.call_args.args,('GET','http://127.0.0.1:18080/v1/config'))
             self.assertEqual(self.call('GET','/v1/ai/config',token='unknown').status_code,401)
 
@@ -103,6 +103,17 @@ class AIBridgeTests(unittest.TestCase):
             self.assertLessEqual(len(json.dumps(forwarded,ensure_ascii=False).encode()),28000)
             self.assertLess(len(forwarded['candidates']),60)
             self.assertEqual(forwarded['limit'],min(24,len(forwarded['candidates'])))
+
+    def test_discovery_flags_survive_bridge_without_accepting_coercions(self):
+        payload={**self.payload,'candidates':[{**self.payload['candidates'][0],'familiar':True,'recent':False,'shown':True}]}
+        with patch('ai_bridge.requests.request',return_value=Reply({'id':'fixture','status':'queued'})) as hub:
+            self.assertEqual(self.call('POST',json=payload).status_code,200)
+            forwarded=hub.call_args.kwargs['json']['input']['candidates'][0]
+            self.assertIs(forwarded['familiar'],True)
+            self.assertIs(forwarded['recent'],False)
+            self.assertIs(forwarded['shown'],True)
+            payload['candidates'][0]['familiar']='true'
+            self.assertEqual(self.call('POST',json=payload).status_code,400)
 
     def test_pending_cancellation_keeps_device_subject(self):
         with patch('ai_bridge.requests.request',return_value=Reply({'id':'task-fixture','status':'cancelled'})) as hub:

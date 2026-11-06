@@ -78,7 +78,7 @@ struct CollectionView: View {
         if route == .mix(0) { return library.seedTracks.first }
         return nil
     }
-    private var aiCandidates: [Track] { related + Track.starterTracks + discovery.newReleases + discovery.hot }
+    private var aiCandidates: [Track] { discovery.explored + related + discovery.newReleases + discovery.hot + Track.starterTracks }
     private var tracks: [Track] {
         switch route {
         case .playlist: list?.tracks ?? []
@@ -165,7 +165,7 @@ struct CollectionView: View {
             }
             .task(id: library.aiRequestKey(from: aiCandidates)) { if route == .mix(0) { library.requestAI(from: aiCandidates) } }
             .task(id: seed?.id) { if let seed { await loadRelated(seed) } }
-            .refreshable { if isExternalMix { await discovery.refresh(force: true) }; if let seed { await loadRelated(seed) } }
+            .refreshable { if route == .mix(0) { library.nextRecommendations(from: aiCandidates); discovery.explored = await discovery.explore(seeds: library.seedTracks, turn: library.recommendationTurn) }; if isExternalMix { await discovery.refresh(force: true) }; if let seed { await loadRelated(seed) } }
             .sheet(isPresented: $isAddingSongs) { if let list { SearchView(target: list.id) } }
             .sheet(item:$editSheet) { action in if let list { PlaylistEditingView(id:list.id, action:action) } }
             .alert("重命名歌单", isPresented: $naming) {

@@ -118,9 +118,12 @@ struct SavedLibrary: Codable, Equatable {
     private var aiRetryAfter = Date.distantPast
     private var aiWork: Task<Void, Never>?
     private var aiCandidates: [Track] = []
-    private var aiOwners = Set<String>()
+    private var aiOwners = Set<UUID>()
     private var aiProbeAfter = Date.distantPast
     private var aiRevision: String?
+    @Published private(set) var recommendationTurn = 0
+    private var recommendationShown = [String]()
+    private var lastManualRecommendation = Date.distantPast
     private var aiPending: AIRecommendations.Pending?
     private var aiGeneration = 0
     private(set) var needsCloudRecovery = true
@@ -129,6 +132,7 @@ struct SavedLibrary: Codable, Equatable {
         self.file = file ?? LocalStorage.directory(.applicationSupportDirectory, name: "SideA").appendingPathComponent("library.json")
         aiCache = (try? Data(contentsOf: self.file.appendingPathExtension("ai"))).flatMap { try? JSONDecoder().decode(AIRecommendations.Cache.self, from: $0) }
         aiPending = (try? Data(contentsOf: self.file.appendingPathExtension("ai-pending"))).flatMap { try? JSONDecoder().decode(AIRecommendations.Pending.self, from: $0) }
+        recommendationShown = (try? Data(contentsOf: self.file.appendingPathExtension("shown"))).flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
         var saved = SavedLibrary()
         var loadError: String?
         if FileManager.default.fileExists(atPath: self.file.path) {
@@ -374,22 +378,36 @@ struct SavedLibrary: Codable, Equatable {
             if counts[key, default: 0] < 2 { result.append(t) } else { extras.append(t) }
             counts[key, default: 0] += 1
         }
-        return Array((result + extras).prefix(limit))
+        return AIRecommendations.discoveryOrder(result + extras, saved: snapshot, shown: recommendationShown, limit: limit)
     }
     private func aiInput(from candidates: [Track]) -> AIRecommendations.Input {
-        AIRecommendations.input(saved: snapshot, candidates: aiAllowed(localRecommendations(from: candidates, limit: 60)))
+        AIRecommendations.input(saved: snapshot, candidates: aiAllowed(localRecommendations(from: candidates, limit: 60)), shown: recommendationShown)
     }
     func aiRequestKey(from candidates: [Track]) -> String {
         guard trackingEnabled, let data = AIRecommendations.encoded(aiInput(from: candidates)) else { return "disabled" }
         return AIRecommendations.hash(String(decoding: data, as: UTF8.self))
     }
     func recommendations(from candidates: [Track]) -> [Track] {
-        let local = localRecommendations(from: candidates, limit: 60)
+        let base = localRecommendations(from: candidates, limit: 60)
+        let local = trackingEnabled ? aiAllowed(base) : base
         guard trackingEnabled, let cache = aiCache, cache.expires > Date() else { return Array(local.prefix(24)) }
         // Listening changes trigger a refresh, but do not discard useful previous
         // analysis. Apply it only to currently allowed candidates; never revive a
         // hidden song, muted style or a song just explicitly skipped.
-        return Array(AIRecommendations.reorder(aiAllowed(local), result: cache.result).prefix(24))
+        return AIRecommendations.discoveryOrder(AIRecommendations.reorder(aiAllowed(local), result: cache.result), saved: snapshot, shown: recommendationShown, limit: 24)
+    }
+    func nextRecommendations(from candidates: [Track]) {
+        guard Date().timeIntervalSince(lastManualRecommendation) >= 2 else { return }
+        lastManualRecommendation = Date()
+        let displayed = recommendations(from: candidates).map(AIRecommendations.recordingKey)
+        recommendationShown.removeAll { displayed.contains($0) }
+        recommendationShown = Array((recommendationShown + displayed).suffix(96))
+        if let data = try? JSONEncoder().encode(recommendationShown) { try? data.write(to: file.appendingPathExtension("shown"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
+        aiCache = nil
+        try? FileManager.default.removeItem(at: file.appendingPathExtension("ai"))
+        recommendationTurn += 1
+        aiProbeAfter = .distantPast
+        requestAI(from: candidates)
     }
     private func aiAllowed(_ candidates: [Track]) -> [Track] {
         candidates.filter { track in
@@ -401,6 +419,8 @@ struct SavedLibrary: Codable, Equatable {
         aiGeneration += 1; aiWork?.cancel(); aiCache = nil; aiRetryAfter = .distantPast; aiProbeAfter = .distantPast
         try? FileManager.default.removeItem(at: file.appendingPathExtension("ai"))
         saveAIPending(nil)
+        recommendationShown = []
+        try? FileManager.default.removeItem(at: file.appendingPathExtension("shown"))
     }
     private func saveAIPending(_ pending: AIRecommendations.Pending?) {
         aiPending = pending
@@ -422,6 +442,7 @@ struct SavedLibrary: Codable, Equatable {
             }
         }
         if !["queued", "leased", "running"].contains(job.status) { saveAIPending(nil) }
+        else { aiProbeAfter = Date().addingTimeInterval(5) }
     }
     func requestAI(from candidates: [Track]) {
         aiCandidates = candidates
@@ -431,17 +452,18 @@ struct SavedLibrary: Codable, Equatable {
             self?.aiWork = nil
         }
     }
-    // One active phone/CarPlay owner is enough. Backgrounding both stops polling;
-    // returning starts a configuration-only probe even when the history is unchanged.
+    // Foreground scenes or actual audio playback keep the observer alive.
+    // Paused background apps stop; unchanged inputs never create another model job.
     func observeAI(owner: String) async {
-        aiOwners.insert(owner); aiProbeAfter = .distantPast
+        let lease = UUID()
+        aiOwners.insert(lease); aiProbeAfter = .distantPast
         defer {
-            aiOwners.remove(owner)
+            aiOwners.remove(lease)
             if aiOwners.isEmpty { aiWork?.cancel() }
         }
         while !Task.isCancelled {
             requestAI(from: aiCandidates)
-            do { try await Task.sleep(for: .seconds(60)) } catch { return }
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
         }
     }
     private func refreshAI() async {
@@ -487,13 +509,14 @@ struct SavedLibrary: Codable, Equatable {
             guard !input.candidates.isEmpty, !input.profile.favorites.isEmpty || !input.profile.listening.isEmpty else { return }
             if let cache = aiCache, cache.fingerprint == fingerprint, cache.expires > Date() { return }
             guard Date() >= aiRetryAfter else { return }
-            aiRetryAfter = Date().addingTimeInterval(600)
+            aiRetryAfter = Date().addingTimeInterval(60)
             let job = try await AIRecommendations.submit(input, server: server, using: session)
+            aiRetryAfter = Date().addingTimeInterval(TimeInterval(max(60, config.min_interval_seconds ?? 300)))
             guard trackingEnabled, generation == aiGeneration, try CentralServer.read() == server else { return }
             let pending = AIRecommendations.Pending(id: job.id, fingerprint: fingerprint, revision: config.revision, created: Date(), input: input)
             saveAIPending(pending)
-            // Save the ID even if the scene just backgrounded; no more polling is
-            // performed until there is an active phone or CarPlay owner again.
+            // Preserve the ID across scene changes; any foreground or playback owner
+            // can resume this same task without submitting another model request.
             if !Task.isCancelled { receiveAI(job, pending: pending) }
         } catch { /* Ordinary recommendations remain usable while the hub is unavailable. */ }
     }

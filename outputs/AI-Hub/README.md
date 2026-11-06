@@ -54,13 +54,14 @@ POST /v1/tasks
 返回 `202 {ok:true,task:{id,status,...}}`；同一设备的相同内容缓存/排队合并返回 200。同一应用中不同 `subject` 不共享缓存或结果。全局不同应用严格隔离。
 
 - `GET /v1/tasks/<id>?subject=<subject>` 读取状态。
-- `GET /v1/config` 零模型调用的配置探测，返回 `{config:{revision,enabled}}`。revision 是不透明指纹，不暴露模型名和密钥；客户端配置变更后清除旧 AI 排序缓存。模型切换不会被旧模型的最小重算间隔拦住。
+- `GET /v1/config` 零模型调用的配置探测，返回 `{config:{revision,enabled,min_interval_seconds}}`。revision 是不透明指纹，不暴露模型名和密钥；客户端配置变更后清除旧 AI 排序缓存。模型切换不会被旧模型的最小重算间隔拦住。
 - `POST /v1/tasks/<id>/cancel {"subject":"..."}` 取消。尚未发出的请求释放预算；已发出的请求不重复调用，费用按已知用量结算。
 - 状态：`queued` → `leased` → `running` → `succeeded` / `failed` / `cancelled`。
 - 成功音乐结果：`{profile_summary,ranked:[{id,reason}]}`。只允许输入的真实候选 ID，不接受编造歌曲、重复项、额外 URL 或指令。
 - 候选 1–60 首，ID/标题/歌手各最多 200 字符；推荐上限 30 首。传入稳定不透明 ID，不能传流媒体 URL 或认证地址。
 - 行为统计最多 6,000 个 JSON 字符，不应上传原始音频、Cookies、密码或凭据。
-- 推荐缓存 6 小时，默认每设备最短重算间隔 30 分钟，管理员可在 60 秒–24 小时之间调整。
+- 音乐候选可携带布尔值 `familiar`（听过或收藏）、`recent`（最近播放）、`shown`（近期展示），旧客户端省略字段仍可用。排序提示优先探索未听过的歌曲，同时保持歌手多样性；输出仍仅允许真实候选 ID。
+- 推荐缓存 6 小时，新应用默认每设备最短重算间隔 5 分钟，管理员可在 60 秒–24 小时之间调整。
 
 ## 后台接口
 
